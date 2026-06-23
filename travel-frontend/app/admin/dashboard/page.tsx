@@ -112,7 +112,6 @@ export default function AdminDashboard() {
     } catch (err) { alert("Server Error!"); }
   };
 
-  // 🚀 NEW: Accept Feedback Logic
   const handleAcceptFeedback = async (id: any) => {
     try {
       const res = await fetch(`https://travel-backend-api-vx7a.onrender.com/api/feedback/${id}`, {
@@ -174,6 +173,8 @@ export default function AdminDashboard() {
 
   const bookings = leads.filter(lead => lead.type === "booking");
   const inquiries = leads.filter(lead => lead.type === "contact");
+  const adminList = users.filter(u => u.role === 'admin' || u.role === 'pending_admin' || u.role === 'pending' || u.email === "up@1123.com");
+  const normalUsersList = users.filter(u => u.role !== 'admin' && u.role !== 'pending_admin' && u.role !== 'pending' && u.email !== "up@1123.com");
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans relative overflow-x-hidden">
@@ -195,13 +196,13 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* 🚀 NEW TAB ADDED FOR FEEDBACKS */}
         <div className="flex overflow-x-auto whitespace-nowrap no-scrollbar gap-2 mb-8 bg-white/80 backdrop-blur-md p-2 rounded-full shadow-sm border border-slate-200 w-full md:w-fit">
           {[
             { id: 'packages', label: '🌍 Packages' },
             { id: 'bookings', label: '🚀 Bookings' },
             { id: 'inquiries', label: '💬 Inquiries' },
-            { id: 'users', label: '👥 All Users' },
+            { id: 'admins', label: '🛡️ Admins' },
+            { id: 'users', label: '👥 Users' },
             { id: 'feedbacks', label: '⭐ Feedbacks' } 
           ].map((tab) => (
             <button 
@@ -218,7 +219,6 @@ export default function AdminDashboard() {
           <table className="w-full text-left border-collapse min-w-[750px] md:min-w-[800px]">
             
             {activeTab === 'packages' && (
-              // ... Packages Table (Unchanged)
               <>
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
                   <tr><th className="px-4 md:px-6 py-4 md:py-5 w-20">Order</th><th className="px-4 md:px-6 py-4 md:py-5">Trip</th><th className="px-4 md:px-6 py-4 md:py-5">Vibe</th><th className="px-4 md:px-6 py-4 md:py-5">Price</th><th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th></tr>
@@ -277,13 +277,69 @@ export default function AdminDashboard() {
               </>
             )}
 
+            {activeTab === 'admins' && (
+              <>
+                <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
+                  <tr><th className="px-4 md:px-6 py-4 md:py-5">User</th><th className="px-4 md:px-6 py-4 md:py-5">Email</th><th className="px-4 md:px-6 py-4 md:py-5">Password</th><th className="px-4 md:px-6 py-4 md:py-5">Rank</th><th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {adminList.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No admins found.</td></tr> : adminList.map((u: any) => {
+                    
+                    const isMaster = u.email === "up@1123.com";
+                    const isSubAdmin = u.role === 'admin' && !isMaster;
+                    const isPendingAdmin = u.role === 'pending_admin' || u.role === 'pending';
+                    const isNormalUser = u.role !== 'admin' && !isPendingAdmin;
+
+                    const iAmMain = currentAdmin?.email === "up@1123.com";
+                    const iAmSub = currentAdmin?.role === 'admin' && currentAdmin?.email !== "up@1123.com";
+
+                    let canDelete = false;
+                    if(iAmMain) {
+                        canDelete = !isMaster; 
+                    } else if(iAmSub) {
+                        canDelete = isNormalUser; 
+                    }
+
+                    const displayPassword = (isMaster && !iAmMain) ? "******" : (u.password || "******");
+                    const isActive = currentAdmin?.email === u.email;
+
+                    return (
+                      <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 md:px-6 py-4 font-black text-slate-950 text-sm uppercase italic flex items-center gap-2">
+                          {u.name || 'Unknown'}
+                          {isActive && (
+                            <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-pulse shadow-[0_0_5px_#22c55e]" title="Active (You)"></span>
+                          )}
+                        </td>
+                        <td className="px-4 md:px-6 py-4 text-xs font-black text-slate-900">{u.email}</td>
+                        <td className="px-4 md:px-6 py-4 text-xs font-mono font-black text-blue-600 select-all bg-slate-50 rounded-lg">{displayPassword}</td>
+                        <td className="px-4 md:px-6 py-4">
+                           <span className={`px-2 py-1 md:px-3 md:py-1 rounded-full text-[8px] md:text-[9px] font-black uppercase tracking-widest ${isMaster ? 'bg-purple-100 text-purple-800' : isSubAdmin ? 'bg-yellow-100 text-yellow-800' : isPendingAdmin ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}`}>
+                             {isMaster ? 'MAIN ADMIN' : isSubAdmin ? 'SUB ADMIN' : isPendingAdmin ? 'REQUESTED' : 'USER'}
+                           </span>
+                        </td>
+                        <td className="px-4 md:px-6 py-4 text-right space-x-2">
+                          {iAmMain && isPendingAdmin && (
+                            <button onClick={() => handleApproveAdmin(u._id || u.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-full transition-all border border-emerald-200">Accept</button>
+                          )}
+                          {canDelete && (
+                            <button onClick={() => handleDeleteUser(u._id || u.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-3 py-2 rounded-full transition-all">Delete</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </>
+            )}
+
             {activeTab === 'users' && (
               <>
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
                   <tr><th className="px-4 md:px-6 py-4 md:py-5">User</th><th className="px-4 md:px-6 py-4 md:py-5">Email</th><th className="px-4 md:px-6 py-4 md:py-5">Password</th><th className="px-4 md:px-6 py-4 md:py-5">Rank</th><th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {users.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No users found.</td></tr> : users.map((u: any) => {
+                  {normalUsersList.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No users found.</td></tr> : normalUsersList.map((u: any) => {
                     
                     const isMaster = u.email === "up@1123.com";
                     const isSubAdmin = u.role === 'admin' && !isMaster;
