@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { GoogleLogin } from '@react-oauth/google'; // 🚀 NEW IMPORT
-import { jwtDecode } from "jwt-decode"; // 🚀 NEW IMPORT
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google'; // 🚀 Provider Import केला
+import { jwtDecode } from "jwt-decode"; 
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -49,7 +49,6 @@ export default function LoginPage() {
     setError("");
     setIsLoading(true);
 
-    // 🚀 NEW: Strict Email Validation Check
     const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
     if (!emailRegex.test(email)) {
       setError("Please enter a valid email address! ❌");
@@ -215,24 +214,26 @@ export default function LoginPage() {
                 <span className={`px-3 text-[10px] md:text-xs font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-500' : 'text-gray-400'}`}>OR</span>
               </div>
               
-              {/* 🚀 REAL GOOGLE LOGIN ADDED HERE */}
+              {/* 🚀 REAL GOOGLE LOGIN WRAPPED IN PROVIDER HERE */}
               <div className="flex justify-center w-full">
-                <GoogleLogin
-                  onSuccess={(credentialResponse) => {
-                    const details = jwtDecode(credentialResponse.credential);
-                    console.log("Google User Details:", details);
-                    localStorage.setItem("user", JSON.stringify({ name: details.name, role: "user", email: details.email }));
-                    localStorage.setItem("userRole", "user");
-                    localStorage.setItem("userName", details.name);
-                    router.push("/");
-                    setTimeout(() => window.location.reload(), 100);
-                  }}
-                  onError={() => {
-                    setError("Google Login Failed!");
-                  }}
-                  theme={isDarkMode ? "filled_black" : "outline"}
-                  size="large"
-                />
+                <GoogleOAuthProvider clientId="591920054629-m595eoigo07hl5gapp8bb4n95b8l34h0.apps.googleusercontent.com">
+                  <GoogleLogin
+                    onSuccess={(credentialResponse) => {
+                      const details = jwtDecode(credentialResponse.credential);
+                      console.log("Google User Details:", details);
+                      localStorage.setItem("user", JSON.stringify({ name: details.name, role: "user", email: details.email }));
+                      localStorage.setItem("userRole", "user");
+                      localStorage.setItem("userName", details.name);
+                      router.push("/");
+                      setTimeout(() => window.location.reload(), 100);
+                    }}
+                    onError={() => {
+                      setError("Google Login Failed!");
+                    }}
+                    theme={isDarkMode ? "filled_black" : "outline"}
+                    size="large"
+                  />
+                </GoogleOAuthProvider>
               </div>
               
               <div className="text-center mt-4 md:mt-6">
