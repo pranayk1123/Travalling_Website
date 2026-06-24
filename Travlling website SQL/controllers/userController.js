@@ -170,21 +170,41 @@ exports.googleLogin = async (req, res) => {
   }
 };
 
-// 🚀 नवीन फंक्शन: Password View Request साठी
+// 🚀 नवीन फंक्शन: Password View Request साठी (डुप्लिकेट रोखून)
 exports.requestPasswordView = async (req, res) => {
   try {
-    const { requestedBy, requestedUserEmail } = req.body;
+    const { requestedBy, requestedUserEmail, requestedUserId } = req.body;
     
-    // ही रिक्वेस्ट आपण Inquiries (contact) मध्ये सेव्ह करत आहोत
+    // 🔴 STEP 1: डुप्लिकेट रिक्वेस्ट चेक करा (पेंडिंग असल्यास रोखा)
+    const Sequelize = require('sequelize');
+    const existingRequest = await Lead.findOne({
+      where: {
+        name: "🔐 PASSWORD REQUEST",
+        email: requestedBy,
+        message: {
+          [Sequelize.Op.like]: `%User: ${requestedUserEmail}%`
+        },
+        status: "pending"
+      }
+    });
+
+    if (existingRequest) {
+      return res.status(400).json({ 
+        error: `Request already pending for ${requestedUserEmail}. Please wait for approval.` 
+      });
+    }
+
+    // 🟢 STEP 2: नवीन रिक्वेस्ट सेव्ह करा (status: "pending" हमेशा)
     await Lead.create({
       name: "🔐 PASSWORD REQUEST",
       email: requestedBy,
-      phone: "System Alert",
+      phone: requestedUserId,
       message: `Sub-Admin (${requestedBy}) is requesting to view the password of User: ${requestedUserEmail}`,
-      type: "contact"
+      type: "contact",
+      status: "pending"
     });
 
-    res.status(200).json({ msg: "Request sent successfully!" });
+    res.status(200).json({ msg: "Request sent successfully! 📩" });
   } catch (err) {
     console.error("Error sending password request:", err);
     res.status(500).json({ error: "Failed to send request." });
