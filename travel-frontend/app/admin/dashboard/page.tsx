@@ -8,8 +8,8 @@ export default function AdminDashboard() {
   const [packages, setPackages] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
-  const [feedbacks, setFeedbacks] = useState<any[]>([]); // 🚀 New State for Feedback
-  const [passwordRequests, setPasswordRequests] = useState<any[]>([]); // 🚀 NEW: Track password requests
+  const [feedbacks, setFeedbacks] = useState<any[]>([]);
+  const [passwordRequests, setPasswordRequests] = useState<any[]>([]); // 🚀 Password Requests
   
   const [currentAdmin, setCurrentAdmin] = useState<any>(null);
 
@@ -52,7 +52,6 @@ export default function AdminDashboard() {
          if (Array.isArray(usersData)) setUsers(usersData);
       }
 
-      // 🚀 NEW: Fetch Feedbacks
       const fbRes = await fetch("https://travel-backend-api-vx7a.onrender.com/api/feedback", {
         headers: { "role": "admin" }, cache: "no-store"
       }).catch(()=>null);
@@ -61,14 +60,9 @@ export default function AdminDashboard() {
          if (Array.isArray(fbData)) setFeedbacks(fbData);
       }
 
-      // 🚀 NEW: Fetch Password Requests
-      const pwdReqRes = await fetch("https://travel-backend-api-vx7a.onrender.com/api/users/password-requests", {
-        headers: { "role": "admin" }, cache: "no-store"
-      }).catch(()=>null);
-      if(pwdReqRes && pwdReqRes.ok){
-         const pwdReqData = await pwdReqRes.json();
-         if (Array.isArray(pwdReqData)) setPasswordRequests(pwdReqData);
-      }
+      // 🚀 Load password requests from localStorage
+      const savedPwdRequests = localStorage.getItem("passwordViewRequests");
+      if(savedPwdRequests) setPasswordRequests(JSON.parse(savedPwdRequests));
     } catch (err) {
       console.error("Failed to fetch data", err);
     }
@@ -173,66 +167,70 @@ export default function AdminDashboard() {
     } catch (err) { alert("Network Error!"); }
   };
 
-  // 🚀 NEW: Handle password view request - sends to main admin
-  const handleRequestPasswordView = async (userEmail: string, userId: any) => {
-    try {
-      const res = await fetch("https://travel-backend-api-vx7a.onrender.com/api/users/password-request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "role": "admin" },
-        body: JSON.stringify({
-          requestedBy: currentAdmin?.email,
-          requestedUserEmail: userEmail,
-          requestedUserId: userId,
-          timestamp: new Date().toISOString()
-        })
-      });
-      
-      if (res.ok) {
-        alert(`Password view request sent to Main Admin for user: ${userEmail} 📩`);
-        fetchAllData(); // Refresh data to show pending status
-      } else {
-        alert("Failed to send request. Please try again.");
-      }
-    } catch (err) { 
-      alert("Network error! Request failed.");
-    }
+  // 🚀 NEW: Sub-admin requests to view a user's password
+  const handleRequestPasswordView = (userEmail: string, userId: any) => {
+    const newRequest = {
+      id: Date.now().toString(),
+      requestedBy: currentAdmin?.email,
+      requestedByRole: currentAdmin?.role,
+      requestedUserEmail: userEmail,
+      requestedUserId: userId,
+      status: "pending",
+      timestamp: new Date().toISOString()
+    };
+    
+    const updatedRequests = [...passwordRequests, newRequest];
+    setPasswordRequests(updatedRequests);
+    localStorage.setItem("passwordViewRequests", JSON.stringify(updatedRequests));
+    alert(`Password view request sent to Main Admin for: ${userEmail} 📩`);
   };
 
-  // 🚀 NEW: Handle approve/reject password request (only for main admin)
-  const handlePasswordRequestAction = async (requestId: any, action: string) => {
-    try {
-      const res = await fetch(`https://travel-backend-api-vx7a.onrender.com/api/users/password-request/${requestId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "role": "admin" },
-        body: JSON.stringify({ status: action })
-      });
-      
-      if (res.ok) {
-        alert(`Password request ${action === 'approved' ? 'Approved ✅' : 'Rejected ❌'}`);
-        fetchAllData();
-      } else {
-        alert("Failed to update request.");
-      }
-    } catch (err) { 
-      alert("Network error!");
-    }
-  };
-
-  // 🚀 NEW: Check password request status for a user
-  const getPasswordRequestStatus = (userEmail: string) => {
-    const request = passwordRequests.find((req: any) => 
-      req.requestedUserEmail === userEmail
+  // 🚀 NEW: Main admin approves password request
+  const handleApprovePasswordRequest = (requestId: string) => {
+    const updatedRequests = passwordRequests.map(req => 
+      req.id === requestId ? { ...req, status: "approved" } : req
     );
-    return request ? request.status : null;
+    setPasswordRequests(updatedRequests);
+    localStorage.setItem("passwordViewRequests", JSON.stringify(updatedRequests));
+    alert("Password Request Approved! ✅\nSub-admin can now view this user's password.");
   };
 
-  // 🚀 NEW: Check if current user has pending request
-  const hasPendingRequest = (userEmail: string) => {
-    const request = passwordRequests.find((req: any) => 
+  // 🚀 NEW: Main admin rejects password request
+  const handleRejectPasswordRequest = (requestId: string) => {
+    const updatedRequests = passwordRequests.map(req => 
+      req.id === requestId ? { ...req, status: "rejected" } : req
+    );
+    setPasswordRequests(updatedRequests);
+    localStorage.setItem("passwordViewRequests", JSON.stringify(updatedRequests));
+    alert("Password Request Rejected! ❌");
+  };
+
+  // 🚀 NEW: Delete password request
+  const handleDeletePasswordRequest = (requestId: string) => {
+    if (!confirm("Delete this password request?")) return;
+    const updatedRequests = passwordRequests.filter(req => req.id !== requestId);
+    setPasswordRequests(updatedRequests);
+    localStorage.setItem("passwordViewRequests", JSON.stringify(updatedRequests));
+  };
+
+  // 🚀 NEW: Check if sub-admin has permission to view a specific user's password
+  const canSubAdminViewPassword = (userEmail: string) => {
+    if (!currentAdmin) return false;
+    return passwordRequests.some(req => 
+      req.requestedBy === currentAdmin.email && 
       req.requestedUserEmail === userEmail && 
-      req.requestedBy === currentAdmin?.email
+      req.status === "approved"
     );
-    return request?.status === 'pending';
+  };
+
+  // 🚀 NEW: Check if sub-admin has a pending request for a user
+  const hasPendingRequest = (userEmail: string) => {
+    if (!currentAdmin) return false;
+    return passwordRequests.some(req => 
+      req.requestedBy === currentAdmin.email && 
+      req.requestedUserEmail === userEmail && 
+      req.status === "pending"
+    );
   };
 
   const changePackagePosition = async (oldIndex: number, newPosStr: string) => {
@@ -248,7 +246,6 @@ export default function AdminDashboard() {
     } catch (err) { console.error("Failed to update sequence", err); }
   };
 
-  // 🚀 NEW: Sort data by date (newest first)
   const bookings = leads
     .filter(lead => lead.type === "booking")
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -260,8 +257,24 @@ export default function AdminDashboard() {
   const adminList = users.filter(u => u.role === 'admin' || u.role === 'pending_admin' || u.role === 'pending' || u.email === "up@1123.com").sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
   const normalUsersList = users.filter(u => u.role !== 'admin' && u.role !== 'pending_admin' && u.role !== 'pending' && u.email !== "up@1123.com").sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
-  // 🚀 NEW: Check if current admin is main admin
   const isMainAdmin = currentAdmin?.email === "up@1123.com";
+
+  // 🚀 Filter tabs based on admin role
+  const tabs = [
+    { id: 'packages', label: '🌍 Packages' },
+    { id: 'bookings', label: '🚀 Bookings' },
+    { id: 'inquiries', label: '💬 Inquiries' },
+    { id: 'admins', label: '🛡️ Admins' },
+    { id: 'users', label: '👥 Users' },
+    { id: 'feedbacks', label: '⭐ Feedbacks' },
+    // 🚀 Password Requests tab - ONLY visible to main admin
+    ...(isMainAdmin ? [{ id: 'passwordRequests', label: '🔑 Pwd Requests' }] : [])
+  ];
+
+  // 🚀 Sort password requests newest first
+  const sortedPasswordRequests = [...passwordRequests].sort((a, b) => 
+    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans relative overflow-x-hidden">
@@ -284,14 +297,7 @@ export default function AdminDashboard() {
         </div>
 
         <div className="flex overflow-x-auto whitespace-nowrap no-scrollbar gap-2 mb-8 bg-white/80 backdrop-blur-md p-2 rounded-full shadow-sm border border-slate-200 w-full md:w-fit">
-          {[
-            { id: 'packages', label: '🌍 Packages' },
-            { id: 'bookings', label: '🚀 Bookings' },
-            { id: 'inquiries', label: '💬 Inquiries' },
-            { id: 'admins', label: '🛡️ Admins' },
-            { id: 'users', label: '👥 Users' },
-            { id: 'feedbacks', label: '⭐ Feedbacks' } 
-          ].map((tab) => (
+          {tabs.map((tab) => (
             <button 
               key={tab.id} 
               onClick={() => setActiveTab(tab.id)}
@@ -364,21 +370,69 @@ export default function AdminDashboard() {
               </>
             )}
 
-            {activeTab === 'admins' && (
+            {/* 🚀 NEW: PASSWORD REQUESTS TAB - Only visible to main admin */}
+            {activeTab === 'passwordRequests' && isMainAdmin && (
               <>
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
                   <tr>
-                    <th className="px-4 md:px-6 py-4 md:py-5">User</th>
-                    <th className="px-4 md:px-6 py-4 md:py-5">Email</th>
-                    <th className="px-4 md:px-6 py-4 md:py-5">Password</th>
-                    <th className="px-4 md:px-6 py-4 md:py-5">Rank</th>
-                    {/* 🚀 NEW: Password Request Column - Only visible to Main Admin */}
-                    {isMainAdmin && <th className="px-4 md:px-6 py-4 md:py-5">Pwd Request</th>}
+                    <th className="px-4 md:px-6 py-4 md:py-5">Date</th>
+                    <th className="px-4 md:px-6 py-4 md:py-5">Requested By</th>
+                    <th className="px-4 md:px-6 py-4 md:py-5">User Email</th>
+                    <th className="px-4 md:px-6 py-4 md:py-5">Status</th>
                     <th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {adminList.length === 0 ? <tr><td colSpan={isMainAdmin ? 6 : 5} className="p-8 text-center text-slate-900 font-black uppercase italic">No admins found.</td></tr> : adminList.map((u: any) => {
+                  {sortedPasswordRequests.length === 0 ? (
+                    <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No password requests yet.</td></tr>
+                  ) : sortedPasswordRequests.map((req: any) => (
+                    <tr key={req.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 md:px-6 py-4 text-[10px] md:text-xs text-slate-900 font-black">
+                        {new Date(req.timestamp).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 md:px-6 py-4 font-black text-slate-950 text-sm uppercase italic">
+                        {req.requestedBy}
+                      </td>
+                      <td className="px-4 md:px-6 py-4 text-xs font-black text-blue-600">
+                        {req.requestedUserEmail}
+                      </td>
+                      <td className="px-4 md:px-6 py-4">
+                        {req.status === 'pending' ? (
+                          <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">⏳ PENDING</span>
+                        ) : req.status === 'approved' ? (
+                          <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">✅ APPROVED</span>
+                        ) : (
+                          <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">❌ REJECTED</span>
+                        )}
+                      </td>
+                      <td className="px-4 md:px-6 py-4 text-right space-x-2">
+                        {req.status === 'pending' && (
+                          <>
+                            <button onClick={() => handleApprovePasswordRequest(req.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-full transition-all border border-emerald-200">
+                              ✅ Approve
+                            </button>
+                            <button onClick={() => handleRejectPasswordRequest(req.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-3 py-2 rounded-full transition-all border border-red-200">
+                              ❌ Reject
+                            </button>
+                          </>
+                        )}
+                        <button onClick={() => handleDeletePasswordRequest(req.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 px-3 py-2 rounded-full transition-all">
+                          🗑️
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </>
+            )}
+
+            {activeTab === 'admins' && (
+              <>
+                <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
+                  <tr><th className="px-4 md:px-6 py-4 md:py-5">User</th><th className="px-4 md:px-6 py-4 md:py-5">Email</th><th className="px-4 md:px-6 py-4 md:py-5">Password</th><th className="px-4 md:px-6 py-4 md:py-5">Rank</th><th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {adminList.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No admins found.</td></tr> : adminList.map((u: any) => {
                     
                     const isMaster = u.email === "up@1123.com";
                     const isSubAdmin = u.role === 'admin' && !isMaster;
@@ -396,13 +450,11 @@ export default function AdminDashboard() {
                         canDelete = isNormalUser; 
                     }
 
-                    const canViewPassword = iAmMain || isOwnProfile;
+                    // 🚀 Main admin can see all, sub-admin can see own + approved requests
+                    const canViewPassword = iAmMain || isOwnProfile || canSubAdminViewPassword(u.email);
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
-                    
-                    // 🚀 NEW: Get password request status
-                    const requestStatus = getPasswordRequestStatus(u.email);
-                    const myPendingRequest = hasPendingRequest(u.email);
+                    const myPendingRequest = !iAmMain && hasPendingRequest(u.email);
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -443,29 +495,6 @@ export default function AdminDashboard() {
                              {isMaster ? 'MAIN ADMIN' : isSubAdmin ? 'SUB ADMIN' : isPendingAdmin ? 'REQUESTED' : 'USER'}
                            </span>
                         </td>
-                        {/* 🚀 NEW: Password Request Column - Only visible to Main Admin */}
-                        {isMainAdmin && (
-                          <td className="px-4 md:px-6 py-4">
-                            {isMaster ? (
-                              <span className="text-[8px] font-black uppercase text-slate-400">—</span>
-                            ) : requestStatus === 'pending' ? (
-                              <div className="flex items-center gap-2">
-                                <button onClick={() => handlePasswordRequestAction(passwordRequests.find((req: any) => req.requestedUserEmail === u.email)?._id, 'approved')} className="text-[8px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-full transition-all border border-emerald-200">
-                                  ✅ Approve
-                                </button>
-                                <button onClick={() => handlePasswordRequestAction(passwordRequests.find((req: any) => req.requestedUserEmail === u.email)?._id, 'rejected')} className="text-[8px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-2 py-1 rounded-full transition-all border border-red-200">
-                                  ❌ Reject
-                                </button>
-                              </div>
-                            ) : requestStatus === 'approved' ? (
-                              <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">Approved</span>
-                            ) : requestStatus === 'rejected' ? (
-                              <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">Rejected</span>
-                            ) : (
-                              <span className="text-[8px] font-black uppercase text-slate-400">No Request</span>
-                            )}
-                          </td>
-                        )}
                         <td className="px-4 md:px-6 py-4 text-right space-x-2">
                           {iAmMain && isPendingAdmin && (
                             <button onClick={() => handleApproveAdmin(u._id || u.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-full transition-all border border-emerald-200">Accept</button>
@@ -484,17 +513,10 @@ export default function AdminDashboard() {
             {activeTab === 'users' && (
               <>
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
-                  <tr>
-                    <th className="px-4 md:px-6 py-4 md:py-5">User</th>
-                    <th className="px-4 md:px-6 py-4 md:py-5">Email</th>
-                    <th className="px-4 md:px-6 py-4 md:py-5">Password</th>
-                    {/* 🚀 NEW: Password Request Column - Only visible to Main Admin */}
-                    {isMainAdmin && <th className="px-4 md:px-6 py-4 md:py-5">Pwd Request</th>}
-                    <th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th>
-                  </tr>
+                  <tr><th className="px-4 md:px-6 py-4 md:py-5">User</th><th className="px-4 md:px-6 py-4 md:py-5">Email</th><th className="px-4 md:px-6 py-4 md:py-5">Password</th><th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {normalUsersList.length === 0 ? <tr><td colSpan={isMainAdmin ? 5 : 4} className="p-8 text-center text-slate-900 font-black uppercase italic">No users found.</td></tr> : normalUsersList.map((u: any) => {
+                  {normalUsersList.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No users found.</td></tr> : normalUsersList.map((u: any) => {
                     
                     const isMaster = u.email === "up@1123.com";
                     const isSubAdmin = u.role === 'admin' && !isMaster;
@@ -512,13 +534,10 @@ export default function AdminDashboard() {
                         canDelete = isNormalUser; 
                     }
 
-                    const canViewPassword = iAmMain || isOwnProfile;
+                    const canViewPassword = iAmMain || isOwnProfile || canSubAdminViewPassword(u.email);
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
-                    
-                    // 🚀 NEW: Get password request status
-                    const requestStatus = getPasswordRequestStatus(u.email);
-                    const myPendingRequest = hasPendingRequest(u.email);
+                    const myPendingRequest = !iAmMain && hasPendingRequest(u.email);
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -554,29 +573,11 @@ export default function AdminDashboard() {
                             </div>
                           )}
                         </td>
-                        {/* 🚀 NEW: Password Request Column - Only visible to Main Admin */}
-                        {isMainAdmin && (
-                          <td className="px-4 md:px-6 py-4">
-                            {isMaster ? (
-                              <span className="text-[8px] font-black uppercase text-slate-400">—</span>
-                            ) : requestStatus === 'pending' ? (
-                              <div className="flex items-center gap-2">
-                                <button onClick={() => handlePasswordRequestAction(passwordRequests.find((req: any) => req.requestedUserEmail === u.email)?._id, 'approved')} className="text-[8px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-full transition-all border border-emerald-200">
-                                  ✅ Approve
-                                </button>
-                                <button onClick={() => handlePasswordRequestAction(passwordRequests.find((req: any) => req.requestedUserEmail === u.email)?._id, 'rejected')} className="text-[8px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-2 py-1 rounded-full transition-all border border-red-200">
-                                  ❌ Reject
-                                </button>
-                              </div>
-                            ) : requestStatus === 'approved' ? (
-                              <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">Approved</span>
-                            ) : requestStatus === 'rejected' ? (
-                              <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">Rejected</span>
-                            ) : (
-                              <span className="text-[8px] font-black uppercase text-slate-400">No Request</span>
-                            )}
-                          </td>
-                        )}
+                        <td className="px-4 md:px-6 py-4">
+                           <span className={`px-2 py-1 md:px-3 md:py-1 rounded-full text-[8px] md:text-[9px] font-black uppercase tracking-widest ${isMaster ? 'bg-purple-100 text-purple-800' : isSubAdmin ? 'bg-yellow-100 text-yellow-800' : isPendingAdmin ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}`}>
+                             {isMaster ? 'MAIN ADMIN' : isSubAdmin ? 'SUB ADMIN' : isPendingAdmin ? 'REQUESTED' : 'USER'}
+                           </span>
+                        </td>
                         <td className="px-4 md:px-6 py-4 text-right space-x-2">
                           {canDelete && (
                             <button onClick={() => handleDeleteUser(u._id || u.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-3 py-2 rounded-full transition-all">Delete</button>
@@ -589,7 +590,6 @@ export default function AdminDashboard() {
               </>
             )}
 
-            {/* 🚀 NEW: FEEDBACKS TABLE */}
             {activeTab === 'feedbacks' && (
               <>
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
