@@ -66,7 +66,7 @@ export default function RegisterPage() {
         setSuccess("Success! Redirecting...");
         setTimeout(() => router.push("/login"), 1500);
       } else {
-        setError(data.error || "Failed");
+        setError(data.msg || data.error || "Email already in use or Registration failed!");
       }
     } catch (err) {
       setError("Server error!");

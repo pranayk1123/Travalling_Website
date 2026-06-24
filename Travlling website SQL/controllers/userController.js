@@ -7,6 +7,14 @@ const client = new OAuth2Client("591920054629-m595eoigo07hl5gapp8bb4n95b8l34h0.a
 
 exports.registerUser = async (req,res)=>{
   try {
+    const { email } = req.body;
+    
+    // ईमेल आधीच डेटाबेसमध्ये आहे का ते चेक करा
+    const existingUser = await User.findOne({ where: { email } });
+    if (existingUser) {
+      return res.status(400).json({ msg: "This email is already registered. Please login!" });
+    }
+
     const user = await User.create(req.body);
     res.json(user);
   } catch(err){
@@ -132,7 +140,7 @@ exports.googleLogin = async (req, res) => {
     // २. डेटाबेसमध्ये युझर शोधणे
     let user = await User.findOne({ where: { email } });
 
-    // ३. जर युझर नसेल, तर नवीन अकाउंट बनवणे (Register without password)
+    // ३. जर युझर नसेल, तर नवीन ACCOUNT बनवणे (Register without password)
     if (!user) {
       user = await User.create({
         name: name,
