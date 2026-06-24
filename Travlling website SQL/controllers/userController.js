@@ -1,4 +1,9 @@
 const User = require("../models/User");
+const { OAuth2Client } = require('google-auth-library'); // 🚀 नवीन पॅकेज
+
+// तुझा Google Client ID
+const client = new OAuth2Client("591920054629-m595eoigo07hl5gapp8bb4n95b8l34h0.apps.googleusercontent.com");
+
 
 exports.registerUser = async (req,res)=>{
   try {
@@ -107,5 +112,51 @@ exports.approveUser = async (req, res) => {
   } catch (error) {
     console.error("Error updating user role:", error);
     res.status(500).json({ msg: "Server Error" });
+  }
+};
+
+
+// 🚀 नवीन फंक्शन: Google Login / Register साठी
+exports.googleLogin = async (req, res) => {
+  try {
+    const { token } = req.body; // फ्रंटएंडकडून आलेला गुगलचा सिक्रेट टोकन
+
+    // १. गुगलकडून टोकन तपासून घेणे (खरा युझर आहे का?)
+    const ticket = await client.verifyIdToken({
+      idToken: token,
+      audience: "591920054629-m595eoigo07hl5gapp8bb4n95b8l34h0.apps.googleusercontent.com",
+    });
+    
+    const { email, name } = ticket.getPayload(); // गुगलने दिलेला व्हेरीफाईड डेटा
+
+    // २. डेटाबेसमध्ये युझर शोधणे
+    let user = await User.findOne({ where: { email } });
+
+    // ३. जर युझर नसेल, तर नवीन अकाउंट बनवणे (Register without password)
+    if (!user) {
+      user = await User.create({
+        name: name,
+        email: email,
+        password: "GoogleLogin_NoPassword", // डमी पासवर्ड (गुगल युझरला पासवर्डची गरज नाही)
+        role: "user"
+      });
+    }
+
+    // ४. जर कोणी 'pending' असेल तर त्याला आत जाण्यापासून थांबवणे
+    if (user.role === "pending_admin" || user.role === "pending") {
+      return res.json({ msg: "Your Admin request is pending approval!" });
+    }
+
+    // ५. फायनल लॉगिन सक्सेस रिस्पॉन्स (तुझ्या जुन्या कोडसारखाच)
+    res.json({
+      msg: "Login success",
+      role: user.role,
+      name: user.name,
+      email: user.email
+    });
+
+  } catch (error) {
+    console.error("Google Auth Error:", error);
+    res.status(500).json({ msg: "Google login failed! Server error." });
   }
 };

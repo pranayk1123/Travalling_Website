@@ -4,7 +4,7 @@ const userController = require("../controllers/userController");
 const User = require("../models/User"); 
 
 // 🚀 इथे approveUser इम्पोर्टमध्ये ॲड केलंय
-const { registerUser, loginUser, updateAdmin, deleteUser, approveUser } = require('../controllers/userController');
+const { registerUser, loginUser, updateAdmin, deleteUser, approveUser, googleLogin } = require('../controllers/userController');
 
 // 🚀 छोटासा सिक्युरिटी गार्ड
 const adminCheck = (req, res, next) => {
@@ -17,7 +17,9 @@ const adminCheck = (req, res, next) => {
 
 router.post("/register", userController.registerUser);
 router.post("/login", userController.loginUser);
+router.post("/google-login", userController.googleLogin);
 router.put("/update-admin", adminCheck, userController.updateAdmin);
+
 
 // 🚀 delete ला adminCheck लावलाय आणि नवीन PUT राऊट ॲड केलाय
 router.delete('/:id', adminCheck, deleteUser); 
