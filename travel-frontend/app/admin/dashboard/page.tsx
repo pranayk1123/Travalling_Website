@@ -25,7 +25,6 @@ export default function AdminDashboard() {
   });
 
   const [visiblePasswords, setVisiblePasswords] = useState<any>({});
-  const [passwordRequests, setPasswordRequests] = useState<any>({}); // Track password view requests
   const togglePasswordVisibility = (userId: any) => {
     setVisiblePasswords((prev: any) => ({ ...prev, [userId]: !prev[userId] }));
   };
@@ -164,16 +163,28 @@ export default function AdminDashboard() {
     } catch (err) { alert("Network Error!"); }
   };
 
-  // 🚀 NEW: Handle password view request
-  const handleRequestPasswordView = async (userId: any) => {
+  // 🚀 NEW: Handle password view request - sends to main admin email
+  const handleRequestPasswordView = async (userEmail: string, userId: any) => {
     try {
-      // Here you would typically send a notification/request to the main admin
-      // For now, we'll just toggle the request state
-      setPasswordRequests((prev: any) => ({ ...prev, [userId]: true }));
-      alert("Password view request sent to Main Admin! 📩");
-      // In production, you'd make an API call to store this request
+      // Send request to backend which will notify main admin
+      const res = await fetch("https://travel-backend-api-vx7a.onrender.com/api/password-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "role": "admin" },
+        body: JSON.stringify({
+          requestedBy: currentAdmin?.email,
+          requestedUserEmail: userEmail,
+          requestedUserId: userId,
+          timestamp: new Date().toISOString()
+        })
+      });
+      
+      if (res.ok) {
+        alert(`Password view request sent to Main Admin for user: ${userEmail} 📩`);
+      } else {
+        alert("Failed to send request. Please try again.");
+      }
     } catch (err) { 
-      alert("Failed to send request!"); 
+      alert("Network error! Request failed.");
     }
   };
 
@@ -321,6 +332,7 @@ export default function AdminDashboard() {
 
                     const iAmMain = currentAdmin?.email === "up@1123.com";
                     const iAmSub = currentAdmin?.role === 'admin' && currentAdmin?.email !== "up@1123.com";
+                    const isOwnProfile = currentAdmin?.email === u.email;
 
                     let canDelete = false;
                     if(iAmMain) {
@@ -329,11 +341,10 @@ export default function AdminDashboard() {
                         canDelete = isNormalUser; 
                     }
 
-                    // 🚀 NEW: Only main admin can see passwords, sub-admin needs to request
-                    const canViewPassword = iAmMain;
-                    const displayPassword = (isMaster && !iAmMain) ? "******" : (u.password || "******");
+                    // 🚀 NEW: Can view password if main admin OR viewing own profile
+                    const canViewPassword = iAmMain || isOwnProfile;
+                    const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
-                    const hasRequestedPassword = passwordRequests[u._id || u.id];
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -357,15 +368,9 @@ export default function AdminDashboard() {
                           ) : (
                             <div className="flex items-center gap-2">
                               <span>••••••••</span>
-                              {!hasRequestedPassword ? (
-                                <button type="button" onClick={() => handleRequestPasswordView(u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
-                                  🔑 Request
-                                </button>
-                              ) : (
-                                <span className="text-[9px] font-black uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full border border-yellow-200" title="Request Pending">
-                                  ⏳ Pending
-                                </span>
-                              )}
+                              <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
+                                🔑 Request
+                              </button>
                             </div>
                           )}
                         </td>
@@ -404,6 +409,7 @@ export default function AdminDashboard() {
 
                     const iAmMain = currentAdmin?.email === "up@1123.com";
                     const iAmSub = currentAdmin?.role === 'admin' && currentAdmin?.email !== "up@1123.com";
+                    const isOwnProfile = currentAdmin?.email === u.email;
 
                     let canDelete = false;
                     if(iAmMain) {
@@ -412,11 +418,10 @@ export default function AdminDashboard() {
                         canDelete = isNormalUser; 
                     }
 
-                    // 🚀 NEW: Only main admin can see passwords, sub-admin needs to request
-                    const canViewPassword = iAmMain;
-                    const displayPassword = (isMaster && !iAmMain) ? "******" : (u.password || "******");
+                    // 🚀 NEW: Can view password if main admin OR viewing own profile
+                    const canViewPassword = iAmMain || isOwnProfile;
+                    const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
-                    const hasRequestedPassword = passwordRequests[u._id || u.id];
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -440,15 +445,9 @@ export default function AdminDashboard() {
                           ) : (
                             <div className="flex items-center gap-2">
                               <span>••••••••</span>
-                              {!hasRequestedPassword ? (
-                                <button type="button" onClick={() => handleRequestPasswordView(u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
-                                  🔑 Request
-                                </button>
-                              ) : (
-                                <span className="text-[9px] font-black uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full border border-yellow-200" title="Request Pending">
-                                  ⏳ Pending
-                                </span>
-                              )}
+                              <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
+                                🔑 Request
+                              </button>
                             </div>
                           )}
                         </td>
