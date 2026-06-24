@@ -25,7 +25,8 @@ export default function AdminDashboard() {
   });
 
   const [visiblePasswords, setVisiblePasswords] = useState<any>({});
-  const [approvedPasswords, setApprovedPasswords] = useState<any>({}); // 🚀 30 सेकंड के लिए track करना
+  const [passwordTimers, setPasswordTimers] = useState<any>({}); // 🚀 Timer store
+  const [passwordCountdowns, setPasswordCountdowns] = useState<any>({}); // 🚀 Countdown display
 
   const togglePasswordVisibility = (userId: any) => {
     setVisiblePasswords((prev: any) => ({ ...prev, [userId]: !prev[userId] }));
@@ -69,6 +70,11 @@ export default function AdminDashboard() {
     fetchAllData(); 
     const userStr = localStorage.getItem("user");
     if(userStr) setCurrentAdmin(JSON.parse(userStr));
+    
+    // Cleanup timers on unmount
+    return () => {
+      Object.values(passwordTimers).forEach((timer: any) => clearInterval(timer));
+    };
   }, []);
 
   const handleDelete = async (id: number) => {
@@ -188,14 +194,56 @@ export default function AdminDashboard() {
     }
   };
 
+  // 🚀 Start 30 second countdown for password view
+  const startPasswordTimer = (userEmail: string) => {
+    // Clear existing timer if any
+    if (passwordTimers[userEmail]) {
+      clearInterval(passwordTimers[userEmail]);
+    }
+    
+    // Set initial countdown
+    setPasswordCountdowns((prev: any) => ({ ...prev, [userEmail]: 30 }));
+    
+    // Start countdown
+    const timer = setInterval(() => {
+      setPasswordCountdowns((prev: any) => {
+        const current = prev[userEmail] || 0;
+        if (current <= 1) {
+          // Timer finished
+          clearInterval(timer);
+          // Remove from timers
+          setPasswordTimers((prevTimers: any) => {
+            const newTimers = { ...prevTimers };
+            delete newTimers[userEmail];
+            return newTimers;
+          });
+          // Remove countdown
+          const newCountdowns = { ...prev };
+          delete newCountdowns[userEmail];
+          // Show alert
+          alert(`⏰ Password access for ${userEmail} has expired! Request again if needed.`);
+          return newCountdowns;
+        }
+        return { ...prev, [userEmail]: current - 1 };
+      });
+    }, 1000);
+    
+    setPasswordTimers((prev: any) => ({ ...prev, [userEmail]: timer }));
+  };
+
   const canSubAdminViewPassword = (userEmail: string) => {
     if (!currentAdmin) return false;
-    return leads.some((lead: any) => 
+    
+    // Check if there's an approved request and timer is active
+    const hasApprovedRequest = leads.some((lead: any) => 
       lead.name === "🔐 PASSWORD REQUEST" && 
       lead.email === currentAdmin.email &&
       lead.message?.includes(`User: ${userEmail}`) &&
       lead.status === "approved"
     );
+    
+    // Only show if timer is active (countdown exists)
+    return hasApprovedRequest && passwordCountdowns[userEmail] > 0;
   };
 
   const hasPendingRequest = (userEmail: string) => {
@@ -208,7 +256,6 @@ export default function AdminDashboard() {
     );
   };
 
-  // 🚀 Reject के बाद फिर से Request button दिखाना चाहिए
   const hasRejectedRequest = (userEmail: string) => {
     if (!currentAdmin) return false;
     return leads.some((lead: any) => 
@@ -232,7 +279,7 @@ export default function AdminDashboard() {
     } catch (err) { console.error("Failed to update sequence", err); }
   };
 
-  const handleApprovePasswordRequest = async (leadId: string) => {
+  const handleApprovePasswordRequest = async (leadId: string, userEmail: string) => {
     try {
       const res = await fetch(`https://travel-backend-api-vx7a.onrender.com/api/leads/${leadId}`, {
         method: "PUT",
@@ -240,17 +287,9 @@ export default function AdminDashboard() {
         body: JSON.stringify({ status: "approved" })
       });
       if (res.ok) { 
-        alert("Password Request Approved! ✅"); 
-        // 🚀 30 सेकंड के लिए password दिखाने का timer सेट करो
-        setApprovedPasswords((prev: any) => ({ ...prev, [leadId]: true }));
-        setTimeout(() => {
-          setApprovedPasswords((prev: any) => {
-            const updated = { ...prev };
-            delete updated[leadId];
-            return updated;
-          });
-          alert("Password access expired! Request again if needed.");
-        }, 30000); // 30 सेकंड
+        alert(`Password Request Approved! ✅\nSub-admin can view ${userEmail}'s password for 30 seconds.`);
+        // 🚀 Start 30 second timer
+        startPasswordTimer(userEmail);
         fetchAllData(); 
       } else {
         alert("Failed to approve!");
@@ -418,7 +457,6 @@ export default function AdminDashboard() {
                     const userEmailMatch = req.message?.match(/User: (.*)/);
                     const userEmail = userEmailMatch ? userEmailMatch[1] : "Unknown";
                     const leadId = req._id || req.id;
-                    const isApproveExpired = approvedPasswords[leadId] ? false : true; // 🚀 30 सेकंड के बाद expired हो जाए
                     
                     return (
                       <tr key={leadId} className="hover:bg-slate-50 transition-colors">
@@ -432,10 +470,8 @@ export default function AdminDashboard() {
                           {userEmail}
                         </td>
                         <td className="px-4 md:px-6 py-4">
-                          {req.status === 'approved' && approvedPasswords[leadId] ? (
-                            <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">✅ APPROVED (30s)</span>
-                          ) : req.status === 'approved' && isApproveExpired ? (
-                            <span className="bg-slate-100 text-slate-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">⏰ EXPIRED</span>
+                          {req.status === 'approved' ? (
+                            <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">✅ APPROVED</span>
                           ) : req.status === 'rejected' ? (
                             <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">❌ REJECTED</span>
                           ) : (
@@ -445,18 +481,13 @@ export default function AdminDashboard() {
                         <td className="px-4 md:px-6 py-4 text-right space-x-2">
                           {req.status !== 'approved' && req.status !== 'rejected' && (
                             <>
-                              <button onClick={() => handleApprovePasswordRequest(leadId)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-full transition-all border border-emerald-200">
+                              <button onClick={() => handleApprovePasswordRequest(leadId, userEmail)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-full transition-all border border-emerald-200">
                                 ✅ Approve
                               </button>
                               <button onClick={() => handleRejectPasswordRequest(leadId)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-3 py-2 rounded-full transition-all border border-red-200">
                                 ❌ Reject
                               </button>
                             </>
-                          )}
-                          {(req.status === 'rejected' || (req.status === 'approved' && isApproveExpired)) && (
-                            <button onClick={() => handleRequestPasswordView(userEmail, leadId)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-3 py-2 rounded-full transition-all border border-orange-200">
-                              🔑 Request Again
-                            </button>
                           )}
                           <button onClick={() => handleDeleteLead(leadId)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 px-3 py-2 rounded-full transition-all">
                             🗑️
@@ -497,7 +528,8 @@ export default function AdminDashboard() {
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
                     const myPendingRequest = !iAmMain && hasPendingRequest(u.email);
-                    const myRejectedRequest = !iAmMain && hasRejectedRequest(u.email); // 🚀 Rejected check
+                    const myRejectedRequest = !iAmMain && hasRejectedRequest(u.email);
+                    const countdown = passwordCountdowns[u.email];
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -517,6 +549,11 @@ export default function AdminDashboard() {
                               <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
                                 {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
                               </button>
+                              {countdown > 0 && (
+                                <span className="text-[10px] font-black text-orange-500 animate-pulse ml-1">
+                                  ⏱️{countdown}s
+                                </span>
+                              )}
                             </div>
                           ) : (
                             <div className="flex items-center gap-2">
@@ -526,8 +563,8 @@ export default function AdminDashboard() {
                                   ⏳ Pending
                                 </span>
                               ) : myRejectedRequest ? (
-                                <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
-                                  🔑 Request Again
+                                <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Again">
+                                  🔄 Request Again
                                 </button>
                               ) : (
                                 <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
@@ -585,7 +622,8 @@ export default function AdminDashboard() {
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
                     const myPendingRequest = !iAmMain && hasPendingRequest(u.email);
-                    const myRejectedRequest = !iAmMain && hasRejectedRequest(u.email); // 🚀 Rejected check
+                    const myRejectedRequest = !iAmMain && hasRejectedRequest(u.email);
+                    const countdown = passwordCountdowns[u.email];
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -605,6 +643,11 @@ export default function AdminDashboard() {
                               <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
                                 {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
                               </button>
+                              {countdown > 0 && (
+                                <span className="text-[10px] font-black text-orange-500 animate-pulse ml-1">
+                                  ⏱️{countdown}s
+                                </span>
+                              )}
                             </div>
                           ) : (
                             <div className="flex items-center gap-2">
@@ -614,8 +657,8 @@ export default function AdminDashboard() {
                                   ⏳ Pending
                                 </span>
                               ) : myRejectedRequest ? (
-                                <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
-                                  🔑 Request Again
+                                <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Again">
+                                  🔄 Request Again
                                 </button>
                               ) : (
                                 <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
