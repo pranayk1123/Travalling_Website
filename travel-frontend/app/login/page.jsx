@@ -118,7 +118,7 @@ export default function LoginPage() {
 
         <button 
           onClick={() => setIsDarkMode(!isDarkMode)}
-          className={`absolute top-4 right-4 md:top-6 md:right-6 z-50 p-2.5 md:p-3 rounded-2xl backdrop-blur-xl border transition-all duration-300 hover:scale-110 active:scale-90 ${isDarkMode ? 'bg-white/10 border-white/20 text-yellow-400' : 'bg-white/50 border-black/10 text-slate-800 shadow-lg'}`}
+          className={`absolute top-24 right-4 md:top-28 md:right-8 z-50 p-2.5 md:p-3 rounded-2xl backdrop-blur-xl border transition-all duration-300 hover:scale-110 active:scale-90 ${isDarkMode ? 'bg-white/10 border-white/20 text-yellow-400' : 'bg-white/50 border-black/10 text-slate-800 shadow-lg'}`}
         >
           {isDarkMode ? "☀️" : "🌙"}
         </button>
@@ -211,61 +211,62 @@ export default function LoginPage() {
                   )}
                 </button>
               </div>
-
-              <div className="flex items-center my-4 before:flex-1 before:border-t before:border-gray-400/50 after:flex-1 after:border-t after:border-gray-400/50">
-                <span className={`px-3 text-[10px] md:text-xs font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-400' : 'text-gray-500'}`}>OR LOG IN WITH</span>
-              </div>
-              
-              {/* 🚀 REAL API & MODERN ICON BUTTON */}
-              <div className="flex justify-center w-full">
-                <GoogleOAuthProvider clientId="591920054629-m595eoigo07hl5gapp8bb4n95b8l34h0.apps.googleusercontent.com">
-                  <div className={`hover:scale-110 active:scale-95 transition-transform duration-300 rounded-full shadow-lg ${isDarkMode ? 'shadow-white/10' : 'shadow-black/10'}`}>
-                    <GoogleLogin
-                      type="icon"
-                      shape="circle"
-                      size="large"
-                      onSuccess={async (credentialResponse) => {
-                        try {
-                          const res = await fetch("https://travel-backend-api-vx7a.onrender.com/api/users/google", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ token: credentialResponse.credential }),
-                          });
-                          const data = await res.json();
-
-                          if (res.ok) {
-                            if (data.msg === "Your Admin request is pending approval!") {
-                              setError(data.msg);
-                              return;
-                            }
-                            localStorage.setItem("user", JSON.stringify({ name: data.name, role: data.role, email: data.email }));
-                            localStorage.setItem("userRole", data.role);
-                            localStorage.setItem("userName", data.name);
-                            if (data.role === "admin") {
-                              router.push("/admin/dashboard");
-                            } else {
-                              router.push("/");
-                            }
-                            setTimeout(() => window.location.reload(), 100);
-                          } else {
-                            setError(data.msg || "Google Login Failed by Server");
-                          }
-                        } catch (err) {
-                          setError("Server error during Google Login!");
-                        }
-                      }}
-                      onError={() => setError("Google Login Failed!")}
-                    />
-                  </div>
-                </GoogleOAuthProvider>
-              </div>
-              
-              <div className="text-center mt-4 md:mt-6">
-                <Link href="/register" className={`font-medium text-xs md:text-sm transition-all ${isDarkMode ? 'text-blue-300 hover:text-white' : 'text-gray-600 hover:text-blue-600'}`}>
-                  Don't have an account? <span className="font-bold underline decoration-blue-500/50">Create one</span>
-                </Link>
-              </div>
             </form>
+
+            {/* 🚀 FORM च्या बाहेर काढलेला Google Login चा भाग */}
+            <div className="flex items-center my-4 before:flex-1 before:border-t before:border-gray-400/50 after:flex-1 after:border-t after:border-gray-400/50 relative z-10">
+              <span className={`px-3 text-[10px] md:text-xs font-bold uppercase tracking-widest ${isDarkMode ? 'text-slate-400' : 'text-gray-500'}`}>OR LOG IN WITH</span>
+            </div>
+            
+            <div className="flex justify-center w-full relative z-10">
+              <GoogleOAuthProvider clientId="591920054629-m595eoigo07hl5gapp8bb4n95b8l34h0.apps.googleusercontent.com">
+                <div className={`hover:scale-110 active:scale-95 transition-transform duration-300 rounded-full shadow-lg ${isDarkMode ? 'shadow-white/10' : 'shadow-black/10'}`}>
+                  <GoogleLogin
+                    type="icon"
+                    shape="circle"
+                    size="large"
+                    onSuccess={async (credentialResponse) => {
+                      try {
+                        const res = await fetch("https://travel-backend-api-vx7a.onrender.com/api/users/google", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ token: credentialResponse.credential }),
+                        });
+                        const data = await res.json();
+
+                        if (res.ok) {
+                          if (data.msg === "Your Admin request is pending approval!") {
+                            setError(data.msg);
+                            return;
+                          }
+                          localStorage.setItem("user", JSON.stringify({ name: data.name, role: data.role, email: data.email }));
+                          localStorage.setItem("userRole", data.role);
+                          localStorage.setItem("userName", data.name);
+                          if (data.role === "admin") {
+                            router.push("/admin/dashboard");
+                          } else {
+                            router.push("/");
+                          }
+                          setTimeout(() => window.location.reload(), 100);
+                        } else {
+                          setError(data.msg || "Google Login Failed by Server");
+                        }
+                      } catch (err) {
+                        setError("Server error during Google Login!");
+                      }
+                    }}
+                    onError={() => setError("Google Login Failed!")}
+                  />
+                </div>
+              </GoogleOAuthProvider>
+            </div>
+            
+            <div className="text-center mt-4 md:mt-6 relative z-10">
+              <Link href="/register" className={`font-medium text-xs md:text-sm transition-all ${isDarkMode ? 'text-blue-300 hover:text-white' : 'text-gray-600 hover:text-blue-600'}`}>
+                Don't have an account? <span className="font-bold underline decoration-blue-500/50">Create one</span>
+              </Link>
+            </div>
+
           </div>
         </div>
       </div>
