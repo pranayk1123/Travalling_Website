@@ -9,6 +9,7 @@ export default function AdminDashboard() {
   const [leads, setLeads] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [feedbacks, setFeedbacks] = useState<any[]>([]); // 🚀 New State for Feedback
+  const [passwordRequests, setPasswordRequests] = useState<any[]>([]); // 🚀 NEW: Track password requests
   
   const [currentAdmin, setCurrentAdmin] = useState<any>(null);
 
@@ -58,6 +59,15 @@ export default function AdminDashboard() {
       if(fbRes && fbRes.ok){
          const fbData = await fbRes.json();
          if (Array.isArray(fbData)) setFeedbacks(fbData);
+      }
+
+      // 🚀 NEW: Fetch Password Requests
+      const pwdReqRes = await fetch("https://travel-backend-api-vx7a.onrender.com/api/users/password-requests", {
+        headers: { "role": "admin" }, cache: "no-store"
+      }).catch(()=>null);
+      if(pwdReqRes && pwdReqRes.ok){
+         const pwdReqData = await pwdReqRes.json();
+         if (Array.isArray(pwdReqData)) setPasswordRequests(pwdReqData);
       }
     } catch (err) {
       console.error("Failed to fetch data", err);
@@ -163,10 +173,9 @@ export default function AdminDashboard() {
     } catch (err) { alert("Network Error!"); }
   };
 
-  // 🚀 NEW: Handle password view request - sends to main admin email
+  // 🚀 NEW: Handle password view request - sends to main admin
   const handleRequestPasswordView = async (userEmail: string, userId: any) => {
     try {
-      // Send request to backend which will notify main admin (URL फिक्स केली आहे)
       const res = await fetch("https://travel-backend-api-vx7a.onrender.com/api/users/password-request", {
         method: "POST",
         headers: { "Content-Type": "application/json", "role": "admin" },
@@ -180,13 +189,50 @@ export default function AdminDashboard() {
       
       if (res.ok) {
         alert(`Password view request sent to Main Admin for user: ${userEmail} 📩`);
-        fetchAllData(); // 🚀 रिक्वेस्ट गेल्यावर डेटा रिफ्रेश होईल म्हणजे Inquiries मध्ये दिसेल
+        fetchAllData(); // Refresh data to show pending status
       } else {
         alert("Failed to send request. Please try again.");
       }
     } catch (err) { 
       alert("Network error! Request failed.");
     }
+  };
+
+  // 🚀 NEW: Handle approve/reject password request (only for main admin)
+  const handlePasswordRequestAction = async (requestId: any, action: string) => {
+    try {
+      const res = await fetch(`https://travel-backend-api-vx7a.onrender.com/api/users/password-request/${requestId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "role": "admin" },
+        body: JSON.stringify({ status: action })
+      });
+      
+      if (res.ok) {
+        alert(`Password request ${action === 'approved' ? 'Approved ✅' : 'Rejected ❌'}`);
+        fetchAllData();
+      } else {
+        alert("Failed to update request.");
+      }
+    } catch (err) { 
+      alert("Network error!");
+    }
+  };
+
+  // 🚀 NEW: Check password request status for a user
+  const getPasswordRequestStatus = (userEmail: string) => {
+    const request = passwordRequests.find((req: any) => 
+      req.requestedUserEmail === userEmail
+    );
+    return request ? request.status : null;
+  };
+
+  // 🚀 NEW: Check if current user has pending request
+  const hasPendingRequest = (userEmail: string) => {
+    const request = passwordRequests.find((req: any) => 
+      req.requestedUserEmail === userEmail && 
+      req.requestedBy === currentAdmin?.email
+    );
+    return request?.status === 'pending';
   };
 
   const changePackagePosition = async (oldIndex: number, newPosStr: string) => {
@@ -321,10 +367,18 @@ export default function AdminDashboard() {
             {activeTab === 'admins' && (
               <>
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
-                  <tr><th className="px-4 md:px-6 py-4 md:py-5">User</th><th className="px-4 md:px-6 py-4 md:py-5">Email</th><th className="px-4 md:px-6 py-4 md:py-5">Password</th><th className="px-4 md:px-6 py-4 md:py-5">Rank</th><th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th></tr>
+                  <tr>
+                    <th className="px-4 md:px-6 py-4 md:py-5">User</th>
+                    <th className="px-4 md:px-6 py-4 md:py-5">Email</th>
+                    <th className="px-4 md:px-6 py-4 md:py-5">Password</th>
+                    <th className="px-4 md:px-6 py-4 md:py-5">Rank</th>
+                    {/* 🚀 NEW: Password Request Column - Only visible to Main Admin */}
+                    {isMainAdmin && <th className="px-4 md:px-6 py-4 md:py-5">Pwd Request</th>}
+                    <th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {adminList.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No admins found.</td></tr> : adminList.map((u: any) => {
+                  {adminList.length === 0 ? <tr><td colSpan={isMainAdmin ? 6 : 5} className="p-8 text-center text-slate-900 font-black uppercase italic">No admins found.</td></tr> : adminList.map((u: any) => {
                     
                     const isMaster = u.email === "up@1123.com";
                     const isSubAdmin = u.role === 'admin' && !isMaster;
@@ -345,6 +399,10 @@ export default function AdminDashboard() {
                     const canViewPassword = iAmMain || isOwnProfile;
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
+                    
+                    // 🚀 NEW: Get password request status
+                    const requestStatus = getPasswordRequestStatus(u.email);
+                    const myPendingRequest = hasPendingRequest(u.email);
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -368,9 +426,15 @@ export default function AdminDashboard() {
                           ) : (
                             <div className="flex items-center gap-2">
                               <span>••••••••</span>
-                              <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
-                                🔑 Request
-                              </button>
+                              {myPendingRequest ? (
+                                <span className="text-[9px] font-black uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full border border-yellow-200">
+                                  ⏳ Pending
+                                </span>
+                              ) : (
+                                <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
+                                  🔑 Request
+                                </button>
+                              )}
                             </div>
                           )}
                         </td>
@@ -379,6 +443,29 @@ export default function AdminDashboard() {
                              {isMaster ? 'MAIN ADMIN' : isSubAdmin ? 'SUB ADMIN' : isPendingAdmin ? 'REQUESTED' : 'USER'}
                            </span>
                         </td>
+                        {/* 🚀 NEW: Password Request Column - Only visible to Main Admin */}
+                        {isMainAdmin && (
+                          <td className="px-4 md:px-6 py-4">
+                            {isMaster ? (
+                              <span className="text-[8px] font-black uppercase text-slate-400">—</span>
+                            ) : requestStatus === 'pending' ? (
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => handlePasswordRequestAction(passwordRequests.find((req: any) => req.requestedUserEmail === u.email)?._id, 'approved')} className="text-[8px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-full transition-all border border-emerald-200">
+                                  ✅ Approve
+                                </button>
+                                <button onClick={() => handlePasswordRequestAction(passwordRequests.find((req: any) => req.requestedUserEmail === u.email)?._id, 'rejected')} className="text-[8px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-2 py-1 rounded-full transition-all border border-red-200">
+                                  ❌ Reject
+                                </button>
+                              </div>
+                            ) : requestStatus === 'approved' ? (
+                              <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">Approved</span>
+                            ) : requestStatus === 'rejected' ? (
+                              <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">Rejected</span>
+                            ) : (
+                              <span className="text-[8px] font-black uppercase text-slate-400">No Request</span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-4 md:px-6 py-4 text-right space-x-2">
                           {iAmMain && isPendingAdmin && (
                             <button onClick={() => handleApproveAdmin(u._id || u.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-full transition-all border border-emerald-200">Accept</button>
@@ -397,10 +484,17 @@ export default function AdminDashboard() {
             {activeTab === 'users' && (
               <>
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
-                  <tr><th className="px-4 md:px-6 py-4 md:py-5">User</th><th className="px-4 md:px-6 py-4 md:py-5">Email</th><th className="px-4 md:px-6 py-4 md:py-5">Password</th><th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th></tr>
+                  <tr>
+                    <th className="px-4 md:px-6 py-4 md:py-5">User</th>
+                    <th className="px-4 md:px-6 py-4 md:py-5">Email</th>
+                    <th className="px-4 md:px-6 py-4 md:py-5">Password</th>
+                    {/* 🚀 NEW: Password Request Column - Only visible to Main Admin */}
+                    {isMainAdmin && <th className="px-4 md:px-6 py-4 md:py-5">Pwd Request</th>}
+                    <th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {normalUsersList.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No users found.</td></tr> : normalUsersList.map((u: any) => {
+                  {normalUsersList.length === 0 ? <tr><td colSpan={isMainAdmin ? 5 : 4} className="p-8 text-center text-slate-900 font-black uppercase italic">No users found.</td></tr> : normalUsersList.map((u: any) => {
                     
                     const isMaster = u.email === "up@1123.com";
                     const isSubAdmin = u.role === 'admin' && !isMaster;
@@ -421,6 +515,10 @@ export default function AdminDashboard() {
                     const canViewPassword = iAmMain || isOwnProfile;
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
+                    
+                    // 🚀 NEW: Get password request status
+                    const requestStatus = getPasswordRequestStatus(u.email);
+                    const myPendingRequest = hasPendingRequest(u.email);
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -444,17 +542,41 @@ export default function AdminDashboard() {
                           ) : (
                             <div className="flex items-center gap-2">
                               <span>••••••••</span>
-                              <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
-                                🔑 Request
-                              </button>
+                              {myPendingRequest ? (
+                                <span className="text-[9px] font-black uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full border border-yellow-200">
+                                  ⏳ Pending
+                                </span>
+                              ) : (
+                                <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
+                                  🔑 Request
+                                </button>
+                              )}
                             </div>
                           )}
                         </td>
-                        <td className="px-4 md:px-6 py-4">
-                           <span className={`px-2 py-1 md:px-3 md:py-1 rounded-full text-[8px] md:text-[9px] font-black uppercase tracking-widest ${isMaster ? 'bg-purple-100 text-purple-800' : isSubAdmin ? 'bg-yellow-100 text-yellow-800' : isPendingAdmin ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}`}>
-                             {isMaster ? 'MAIN ADMIN' : isSubAdmin ? 'SUB ADMIN' : isPendingAdmin ? 'REQUESTED' : 'USER'}
-                           </span>
-                        </td>
+                        {/* 🚀 NEW: Password Request Column - Only visible to Main Admin */}
+                        {isMainAdmin && (
+                          <td className="px-4 md:px-6 py-4">
+                            {isMaster ? (
+                              <span className="text-[8px] font-black uppercase text-slate-400">—</span>
+                            ) : requestStatus === 'pending' ? (
+                              <div className="flex items-center gap-2">
+                                <button onClick={() => handlePasswordRequestAction(passwordRequests.find((req: any) => req.requestedUserEmail === u.email)?._id, 'approved')} className="text-[8px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-2 py-1 rounded-full transition-all border border-emerald-200">
+                                  ✅ Approve
+                                </button>
+                                <button onClick={() => handlePasswordRequestAction(passwordRequests.find((req: any) => req.requestedUserEmail === u.email)?._id, 'rejected')} className="text-[8px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-2 py-1 rounded-full transition-all border border-red-200">
+                                  ❌ Reject
+                                </button>
+                              </div>
+                            ) : requestStatus === 'approved' ? (
+                              <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">Approved</span>
+                            ) : requestStatus === 'rejected' ? (
+                              <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">Rejected</span>
+                            ) : (
+                              <span className="text-[8px] font-black uppercase text-slate-400">No Request</span>
+                            )}
+                          </td>
+                        )}
                         <td className="px-4 md:px-6 py-4 text-right space-x-2">
                           {canDelete && (
                             <button onClick={() => handleDeleteUser(u._id || u.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-3 py-2 rounded-full transition-all">Delete</button>
