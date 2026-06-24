@@ -25,83 +25,10 @@ export default function AdminDashboard() {
   });
 
   const [visiblePasswords, setVisiblePasswords] = useState<any>({});
-  const [passwordTimers, setPasswordTimers] = useState<any>({});
   const [passwordCountdowns, setPasswordCountdowns] = useState<any>({});
 
   const togglePasswordVisibility = (userId: any) => {
     setVisiblePasswords((prev: any) => ({ ...prev, [userId]: !prev[userId] }));
-  };
-
-  const clearAllTimers = () => {
-    Object.values(passwordTimers).forEach((timer: any) => clearInterval(timer));
-    setPasswordTimers({});
-    setPasswordCountdowns({});
-  };
-
-  // 🚀 Load saved timers from localStorage for the current admin
-  const loadTimersForAdmin = (adminEmail: string) => {
-    if (!adminEmail) return;
-    
-    const savedTimers = localStorage.getItem(`passwordTimers_${adminEmail}`);
-    if (savedTimers) {
-      const parsed = JSON.parse(savedTimers);
-      const now = Date.now();
-      const activeTimers: any = {};
-      const activeCountdowns: any = {};
-      
-      Object.keys(parsed).forEach(userEmail => {
-        const elapsed = Math.floor((now - parsed[userEmail]) / 1000);
-        const remaining = 30 - elapsed;
-        if (remaining > 0) {
-          activeCountdowns[userEmail] = remaining;
-          
-          const timer = setInterval(() => {
-            setPasswordCountdowns((prev: any) => {
-              const current = prev[userEmail] || 0;
-              if (current <= 1) {
-                clearInterval(timer);
-                const newCountdowns = { ...prev };
-                delete newCountdowns[userEmail];
-                
-                // Remove from localStorage
-                const saved = JSON.parse(localStorage.getItem(`passwordTimers_${adminEmail}`) || "{}");
-                delete saved[userEmail];
-                if (Object.keys(saved).length === 0) {
-                  localStorage.removeItem(`passwordTimers_${adminEmail}`);
-                } else {
-                  localStorage.setItem(`passwordTimers_${adminEmail}`, JSON.stringify(saved));
-                }
-                
-                setPasswordTimers((prevTimers: any) => {
-                  const newTimers = { ...prevTimers };
-                  delete newTimers[userEmail];
-                  return newTimers;
-                });
-                
-                alert(`⏰ Password access for ${userEmail} has expired! Request again if needed.`);
-                return newCountdowns;
-              }
-              return { ...prev, [userEmail]: current - 1 };
-            });
-          }, 1000);
-          
-          activeTimers[userEmail] = timer;
-        } else {
-          // Timer expired, remove from localStorage
-          delete parsed[userEmail];
-        }
-      });
-      
-      // Update localStorage if any timers expired
-      if (Object.keys(parsed).length === 0) {
-        localStorage.removeItem(`passwordTimers_${adminEmail}`);
-      } else {
-        localStorage.setItem(`passwordTimers_${adminEmail}`, JSON.stringify(parsed));
-      }
-      
-      setPasswordTimers((prev: any) => ({ ...prev, ...activeTimers }));
-      setPasswordCountdowns((prev: any) => ({ ...prev, ...activeCountdowns }));
-    }
   };
 
   const fetchAllData = async () => {
@@ -139,26 +66,58 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => { 
+    fetchAllData(); 
     const userStr = localStorage.getItem("user");
-    if(userStr) {
-      const user = JSON.parse(userStr);
-      setCurrentAdmin(user);
-      // 🚀 Load timers after setting current admin
-      loadTimersForAdmin(user.email);
-    }
-    fetchAllData();
-    
-    return () => {
-      clearAllTimers();
-    };
+    if(userStr) setCurrentAdmin(JSON.parse(userStr));
   }, []);
 
-  // 🚀 Reload timers when admin changes or page loads
+  // 🚀 LATEST REQUEST HELPER
+  const getLatestPasswordRequest = (userEmail: string) => {
+    if (!currentAdmin) return null;
+    const userRequests = leads.filter((lead: any) => 
+      lead.name === "🔐 PASSWORD REQUEST" && 
+      lead.email === currentAdmin.email &&
+      lead.message?.includes(`User: ${userEmail}`)
+    ).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return userRequests.length > 0 ? userRequests[0] : null;
+  };
+
+  // 🚀 START 30 SECONDS TIMER FOR SUB-ADMIN
+  const startPasswordTimer = (userEmail: string, leadId: string) => {
+    setPasswordCountdowns((prev: any) => ({ ...prev, [userEmail]: 30 }));
+
+    const timer = setInterval(() => {
+      setPasswordCountdowns((prev: any) => {
+        const current = prev[userEmail];
+        if (current <= 1) {
+          clearInterval(timer);
+          setVisiblePasswords({}); // Hide the password instantly
+          
+          // Delete lead to reset state completely without page refresh
+          fetch(`https://travel-backend-api-vx7a.onrender.com/api/leads/${leadId}`, {
+            method: "DELETE", headers: { "role": "admin" }
+          }).then(() => fetchAllData()); 
+
+          const newCountdowns = { ...prev };
+          delete newCountdowns[userEmail];
+          return newCountdowns;
+        }
+        return { ...prev, [userEmail]: current - 1 };
+      });
+    }, 1000);
+  };
+
+  // 🚀 AUTO-TRIGGER TIMER WHEN APPROVED
   useEffect(() => {
-    if (currentAdmin?.email) {
-      loadTimersForAdmin(currentAdmin.email);
-    }
-  }, [currentAdmin?.email, leads]); // Also reload when leads change
+    if (!currentAdmin || currentAdmin.email === "up@1123.com") return;
+    
+    users.forEach(u => {
+      const req = getLatestPasswordRequest(u.email);
+      if (req && req.status === "approved" && passwordCountdowns[u.email] === undefined) {
+        startPasswordTimer(u.email, req._id || req.id);
+      }
+    });
+  }, [leads, currentAdmin, users]);
 
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure? This trip will be gone forever!")) return;
@@ -266,96 +225,28 @@ export default function AdminDashboard() {
       });
       
       if (res.ok) {
-        alert(`Password view request sent to Main Admin for: ${userEmail} 📩`);
-        fetchAllData();
+        fetchAllData(); 
       } else {
-        const errData = await res.json();
-        alert(errData.error || "Failed to send request. Please try again.");
+        alert("Failed to send request.");
       }
     } catch (err) { 
       alert("Network error! Request failed.");
     }
   };
 
-  const startPasswordTimer = (userEmail: string, adminEmail: string) => {
-    // Clear existing timer if any
-    if (passwordTimers[userEmail]) {
-      clearInterval(passwordTimers[userEmail]);
-    }
-    
-    // Save timer start time to localStorage for that admin
-    const savedTimers = JSON.parse(localStorage.getItem(`passwordTimers_${adminEmail}`) || "{}");
-    savedTimers[userEmail] = Date.now();
-    localStorage.setItem(`passwordTimers_${adminEmail}`, JSON.stringify(savedTimers));
-    
-    // Set initial countdown
-    setPasswordCountdowns((prev: any) => ({ ...prev, [userEmail]: 30 }));
-    
-    // Start countdown
-    const timer = setInterval(() => {
-      setPasswordCountdowns((prev: any) => {
-        const current = prev[userEmail] || 0;
-        if (current <= 1) {
-          clearInterval(timer);
-          // Remove from localStorage
-          const saved = JSON.parse(localStorage.getItem(`passwordTimers_${adminEmail}`) || "{}");
-          delete saved[userEmail];
-          if (Object.keys(saved).length === 0) {
-            localStorage.removeItem(`passwordTimers_${adminEmail}`);
-          } else {
-            localStorage.setItem(`passwordTimers_${adminEmail}`, JSON.stringify(saved));
-          }
-          // Remove from timers
-          setPasswordTimers((prevTimers: any) => {
-            const newTimers = { ...prevTimers };
-            delete newTimers[userEmail];
-            return newTimers;
-          });
-          // Remove countdown
-          const newCountdowns = { ...prev };
-          delete newCountdowns[userEmail];
-          alert(`⏰ Password access for ${userEmail} has expired! Request again if needed.`);
-          return newCountdowns;
-        }
-        return { ...prev, [userEmail]: current - 1 };
-      });
-    }, 1000);
-    
-    setPasswordTimers((prev: any) => ({ ...prev, [userEmail]: timer }));
-  };
-
   const canSubAdminViewPassword = (userEmail: string) => {
-    if (!currentAdmin) return false;
-    
-    const hasApprovedRequest = leads.some((lead: any) => 
-      lead.name === "🔐 PASSWORD REQUEST" && 
-      lead.email === currentAdmin.email &&
-      lead.message?.includes(`User: ${userEmail}`) &&
-      lead.status === "approved"
-    );
-    
-    const countdown = passwordCountdowns[userEmail];
-    return hasApprovedRequest && countdown > 0;
+    const req = getLatestPasswordRequest(userEmail);
+    return req?.status === "approved";
   };
 
   const hasPendingRequest = (userEmail: string) => {
-    if (!currentAdmin) return false;
-    return leads.some((lead: any) => 
-      lead.name === "🔐 PASSWORD REQUEST" && 
-      lead.email === currentAdmin.email &&
-      lead.message?.includes(`User: ${userEmail}`) &&
-      (!lead.status || lead.status === "pending")
-    );
+    const req = getLatestPasswordRequest(userEmail);
+    return req && (!req.status || req.status === "pending");
   };
 
   const hasRejectedRequest = (userEmail: string) => {
-    if (!currentAdmin) return false;
-    return leads.some((lead: any) => 
-      lead.name === "🔐 PASSWORD REQUEST" && 
-      lead.email === currentAdmin.email &&
-      lead.message?.includes(`User: ${userEmail}`) &&
-      lead.status === "rejected"
-    );
+    const req = getLatestPasswordRequest(userEmail);
+    return req?.status === "rejected";
   };
 
   const changePackagePosition = async (oldIndex: number, newPosStr: string) => {
@@ -379,25 +270,10 @@ export default function AdminDashboard() {
         body: JSON.stringify({ status: "approved" })
       });
       if (res.ok) { 
-        alert(`Password Request Approved! ✅\n${requestedBy} can view ${userEmail}'s password for 30 seconds.`);
-        
-        // Save timer for the sub-admin who requested
-        const savedTimers = JSON.parse(localStorage.getItem(`passwordTimers_${requestedBy}`) || "{}");
-        savedTimers[userEmail] = Date.now();
-        localStorage.setItem(`passwordTimers_${requestedBy}`, JSON.stringify(savedTimers));
-        
-        // If the approved sub-admin is currently logged in, start their timer immediately
-        if (currentAdmin?.email === requestedBy) {
-          startPasswordTimer(userEmail, requestedBy);
-        }
-        
+        alert(`Password Request Approved! ✅`);
         fetchAllData(); 
-      } else {
-        alert("Failed to approve!");
       }
-    } catch (err) { 
-      alert("Network error! " + err); 
-    }
+    } catch (err) { alert("Network error!"); }
   };
 
   const handleRejectPasswordRequest = async (leadId: string) => {
@@ -407,15 +283,8 @@ export default function AdminDashboard() {
         headers: { "Content-Type": "application/json", "role": "admin" },
         body: JSON.stringify({ status: "rejected" })
       });
-      if (res.ok) { 
-        alert("Password Request Rejected! ❌"); 
-        fetchAllData(); 
-      } else {
-        alert("Failed to reject!");
-      }
-    } catch (err) { 
-      alert("Network error! " + err); 
-    }
+      if (res.ok) { fetchAllData(); }
+    } catch (err) { alert("Network error!"); }
   };
 
   const passwordRequestLeads = leads
@@ -651,7 +520,7 @@ export default function AdminDashboard() {
                               <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
                                 {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
                               </button>
-                              {countdown > 0 && (
+                              {countdown > 0 && !iAmMain && (
                                 <span className="text-[10px] font-black text-orange-500 animate-pulse ml-1 bg-orange-50 px-1.5 py-0.5 rounded-full">
                                   ⏱️{countdown}s
                                 </span>
@@ -665,9 +534,14 @@ export default function AdminDashboard() {
                                   ⏳ Pending
                                 </span>
                               ) : myRejectedRequest ? (
-                                <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Again">
-                                  🔄 Request Again
-                                </button>
+                                <>
+                                  <span className="text-[9px] font-black uppercase tracking-widest text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200">
+                                    ❌ Rejected
+                                  </span>
+                                  <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Again">
+                                    🔄 Request Again
+                                  </button>
+                                </>
                               ) : (
                                 <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
                                   🔑 Request
@@ -745,7 +619,7 @@ export default function AdminDashboard() {
                               <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
                                 {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
                               </button>
-                              {countdown > 0 && (
+                              {countdown > 0 && !iAmMain && (
                                 <span className="text-[10px] font-black text-orange-500 animate-pulse ml-1 bg-orange-50 px-1.5 py-0.5 rounded-full">
                                   ⏱️{countdown}s
                                 </span>
@@ -759,9 +633,14 @@ export default function AdminDashboard() {
                                   ⏳ Pending
                                 </span>
                               ) : myRejectedRequest ? (
-                                <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Again">
-                                  🔄 Request Again
-                                </button>
+                                <>
+                                  <span className="text-[9px] font-black uppercase tracking-widest text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200">
+                                    ❌ Rejected
+                                  </span>
+                                  <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Again">
+                                    🔄 Request Again
+                                  </button>
+                                </>
                               ) : (
                                 <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
                                   🔑 Request
@@ -769,11 +648,6 @@ export default function AdminDashboard() {
                               )}
                             </div>
                           )}
-                        </td>
-                        <td className="px-4 md:px-6 py-4">
-                           <span className={`px-2 py-1 md:px-3 md:py-1 rounded-full text-[8px] md:text-[9px] font-black uppercase tracking-widest ${isMaster ? 'bg-purple-100 text-purple-800' : isSubAdmin ? 'bg-yellow-100 text-yellow-800' : isPendingAdmin ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}`}>
-                             {isMaster ? 'MAIN ADMIN' : isSubAdmin ? 'SUB ADMIN' : isPendingAdmin ? 'REQUESTED' : 'USER'}
-                           </span>
                         </td>
                         <td className="px-4 md:px-6 py-4 text-right space-x-2">
                           {canDelete && (
@@ -787,6 +661,7 @@ export default function AdminDashboard() {
               </>
             )}
 
+            {/* 🚀 NEW: FEEDBACKS TABLE */}
             {activeTab === 'feedbacks' && (
               <>
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
