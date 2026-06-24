@@ -25,6 +25,8 @@ export default function AdminDashboard() {
   });
 
   const [visiblePasswords, setVisiblePasswords] = useState<any>({});
+  const [approvedPasswords, setApprovedPasswords] = useState<any>({}); // 🚀 30 सेकंड के लिए track करना
+
   const togglePasswordVisibility = (userId: any) => {
     setVisiblePasswords((prev: any) => ({ ...prev, [userId]: !prev[userId] }));
   };
@@ -206,6 +208,17 @@ export default function AdminDashboard() {
     );
   };
 
+  // 🚀 Reject के बाद फिर से Request button दिखाना चाहिए
+  const hasRejectedRequest = (userEmail: string) => {
+    if (!currentAdmin) return false;
+    return leads.some((lead: any) => 
+      lead.name === "🔐 PASSWORD REQUEST" && 
+      lead.email === currentAdmin.email &&
+      lead.message?.includes(`User: ${userEmail}`) &&
+      lead.status === "rejected"
+    );
+  };
+
   const changePackagePosition = async (oldIndex: number, newPosStr: string) => {
     const newPos = parseInt(newPosStr);
     if (isNaN(newPos) || newPos < 1 || newPos > packages.length || newPos - 1 === oldIndex) return;
@@ -219,7 +232,6 @@ export default function AdminDashboard() {
     } catch (err) { console.error("Failed to update sequence", err); }
   };
 
-  // 🚀 निष्पादन करण्यासाठी: Approve/Reject password request
   const handleApprovePasswordRequest = async (leadId: string) => {
     try {
       const res = await fetch(`https://travel-backend-api-vx7a.onrender.com/api/leads/${leadId}`, {
@@ -229,6 +241,16 @@ export default function AdminDashboard() {
       });
       if (res.ok) { 
         alert("Password Request Approved! ✅"); 
+        // 🚀 30 सेकंड के लिए password दिखाने का timer सेट करो
+        setApprovedPasswords((prev: any) => ({ ...prev, [leadId]: true }));
+        setTimeout(() => {
+          setApprovedPasswords((prev: any) => {
+            const updated = { ...prev };
+            delete updated[leadId];
+            return updated;
+          });
+          alert("Password access expired! Request again if needed.");
+        }, 30000); // 30 सेकंड
         fetchAllData(); 
       } else {
         alert("Failed to approve!");
@@ -396,6 +418,7 @@ export default function AdminDashboard() {
                     const userEmailMatch = req.message?.match(/User: (.*)/);
                     const userEmail = userEmailMatch ? userEmailMatch[1] : "Unknown";
                     const leadId = req._id || req.id;
+                    const isApproveExpired = approvedPasswords[leadId] ? false : true; // 🚀 30 सेकंड के बाद expired हो जाए
                     
                     return (
                       <tr key={leadId} className="hover:bg-slate-50 transition-colors">
@@ -409,8 +432,10 @@ export default function AdminDashboard() {
                           {userEmail}
                         </td>
                         <td className="px-4 md:px-6 py-4">
-                          {req.status === 'approved' ? (
-                            <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">✅ APPROVED</span>
+                          {req.status === 'approved' && approvedPasswords[leadId] ? (
+                            <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">✅ APPROVED (30s)</span>
+                          ) : req.status === 'approved' && isApproveExpired ? (
+                            <span className="bg-slate-100 text-slate-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">⏰ EXPIRED</span>
                           ) : req.status === 'rejected' ? (
                             <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">❌ REJECTED</span>
                           ) : (
@@ -427,6 +452,11 @@ export default function AdminDashboard() {
                                 ❌ Reject
                               </button>
                             </>
+                          )}
+                          {(req.status === 'rejected' || (req.status === 'approved' && isApproveExpired)) && (
+                            <button onClick={() => handleRequestPasswordView(userEmail, leadId)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-3 py-2 rounded-full transition-all border border-orange-200">
+                              🔑 Request Again
+                            </button>
                           )}
                           <button onClick={() => handleDeleteLead(leadId)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 px-3 py-2 rounded-full transition-all">
                             🗑️
@@ -467,6 +497,7 @@ export default function AdminDashboard() {
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
                     const myPendingRequest = !iAmMain && hasPendingRequest(u.email);
+                    const myRejectedRequest = !iAmMain && hasRejectedRequest(u.email); // 🚀 Rejected check
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -482,7 +513,7 @@ export default function AdminDashboard() {
                             <span className="text-blue-500 font-semibold flex items-center gap-1">🌐 Google Auth</span>
                           ) : canViewPassword ? (
                             <div className="flex items-center gap-2">
-                              <span className="select-all">{visiblePasswords[u._id || u.id] ? displayPassword : "••••���•••"}</span>
+                              <span className="select-all">{visiblePasswords[u._id || u.id] ? displayPassword : "••••••••"}</span>
                               <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
                                 {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
                               </button>
@@ -494,6 +525,10 @@ export default function AdminDashboard() {
                                 <span className="text-[9px] font-black uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full border border-yellow-200">
                                   ⏳ Pending
                                 </span>
+                              ) : myRejectedRequest ? (
+                                <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
+                                  🔑 Request Again
+                                </button>
                               ) : (
                                 <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
                                   🔑 Request
@@ -550,6 +585,7 @@ export default function AdminDashboard() {
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
                     const myPendingRequest = !iAmMain && hasPendingRequest(u.email);
+                    const myRejectedRequest = !iAmMain && hasRejectedRequest(u.email); // 🚀 Rejected check
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -577,6 +613,10 @@ export default function AdminDashboard() {
                                 <span className="text-[9px] font-black uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full border border-yellow-200">
                                   ⏳ Pending
                                 </span>
+                              ) : myRejectedRequest ? (
+                                <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
+                                  🔑 Request Again
+                                </button>
                               ) : (
                                 <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
                                   🔑 Request
