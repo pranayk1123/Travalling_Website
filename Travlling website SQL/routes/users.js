@@ -17,7 +17,7 @@ const adminCheck = (req, res, next) => {
 
 router.post("/register", userController.registerUser);
 router.post("/login", userController.loginUser);
-router.post("/google-login", userController.googleLogin);
+router.post('/google', googleLogin);
 router.put("/update-admin", adminCheck, userController.updateAdmin);
 
 
