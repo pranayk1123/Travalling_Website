@@ -41,7 +41,7 @@ export default function AdminDashboard() {
   };
 
   const togglePasswordVisibility = (userId: any, userEmail: string) => {
-    if (currentAdmin?.email !== "up@1123.com") {
+    if (currentAdmin?.email !== "up@1123.com" && currentAdmin?.email !== userEmail) {
       const req = getLatestPasswordRequest(userEmail);
       if (!req || req.status !== "approved") {
         alert("Access Denied! You must request access first.");
