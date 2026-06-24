@@ -9,7 +9,6 @@ export default function AdminDashboard() {
   const [leads, setLeads] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
   const [feedbacks, setFeedbacks] = useState<any[]>([]);
-  const [passwordRequests, setPasswordRequests] = useState<any[]>([]); // 🚀 Password Requests
   
   const [currentAdmin, setCurrentAdmin] = useState<any>(null);
 
@@ -59,10 +58,6 @@ export default function AdminDashboard() {
          const fbData = await fbRes.json();
          if (Array.isArray(fbData)) setFeedbacks(fbData);
       }
-
-      // 🚀 Load password requests from localStorage
-      const savedPwdRequests = localStorage.getItem("passwordViewRequests");
-      if(savedPwdRequests) setPasswordRequests(JSON.parse(savedPwdRequests));
     } catch (err) {
       console.error("Failed to fetch data", err);
     }
@@ -167,69 +162,54 @@ export default function AdminDashboard() {
     } catch (err) { alert("Network Error!"); }
   };
 
-  // 🚀 NEW: Sub-admin requests to view a user's password
-  const handleRequestPasswordView = (userEmail: string, userId: any) => {
-    const newRequest = {
-      id: Date.now().toString(),
-      requestedBy: currentAdmin?.email,
-      requestedByRole: currentAdmin?.role,
-      requestedUserEmail: userEmail,
-      requestedUserId: userId,
-      status: "pending",
-      timestamp: new Date().toISOString()
-    };
-    
-    const updatedRequests = [...passwordRequests, newRequest];
-    setPasswordRequests(updatedRequests);
-    localStorage.setItem("passwordViewRequests", JSON.stringify(updatedRequests));
-    alert(`Password view request sent to Main Admin for: ${userEmail} 📩`);
+  // 🚀 Sub-admin requests password view → POST /api/password-request
+  const handleRequestPasswordView = async (userEmail: string, userId: any) => {
+    try {
+      const res = await fetch("https://travel-backend-api-vx7a.onrender.com/api/password-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "role": "admin" },
+        body: JSON.stringify({
+          requestedBy: currentAdmin?.email,
+          requestedUserEmail: userEmail,
+          requestedUserId: userId
+        })
+      });
+      
+      if (res.ok) {
+        alert(`Password view request sent to Main Admin for: ${userEmail} 📩`);
+        fetchAllData(); // Refresh data to show in Pwd Requests tab
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed to send request. Please try again.");
+      }
+    } catch (err) { 
+      alert("Network error! Request failed.");
+    }
   };
 
-  // 🚀 NEW: Main admin approves password request
-  const handleApprovePasswordRequest = (requestId: string) => {
-    const updatedRequests = passwordRequests.map(req => 
-      req.id === requestId ? { ...req, status: "approved" } : req
-    );
-    setPasswordRequests(updatedRequests);
-    localStorage.setItem("passwordViewRequests", JSON.stringify(updatedRequests));
-    alert("Password Request Approved! ✅\nSub-admin can now view this user's password.");
-  };
-
-  // 🚀 NEW: Main admin rejects password request
-  const handleRejectPasswordRequest = (requestId: string) => {
-    const updatedRequests = passwordRequests.map(req => 
-      req.id === requestId ? { ...req, status: "rejected" } : req
-    );
-    setPasswordRequests(updatedRequests);
-    localStorage.setItem("passwordViewRequests", JSON.stringify(updatedRequests));
-    alert("Password Request Rejected! ❌");
-  };
-
-  // 🚀 NEW: Delete password request
-  const handleDeletePasswordRequest = (requestId: string) => {
-    if (!confirm("Delete this password request?")) return;
-    const updatedRequests = passwordRequests.filter(req => req.id !== requestId);
-    setPasswordRequests(updatedRequests);
-    localStorage.setItem("passwordViewRequests", JSON.stringify(updatedRequests));
-  };
-
-  // 🚀 NEW: Check if sub-admin has permission to view a specific user's password
+  // 🚀 Check if sub-admin has permission to view a specific user's password
+  // Password requests are stored as leads with name "🔐 PASSWORD REQUEST" and status field
   const canSubAdminViewPassword = (userEmail: string) => {
     if (!currentAdmin) return false;
-    return passwordRequests.some(req => 
-      req.requestedBy === currentAdmin.email && 
-      req.requestedUserEmail === userEmail && 
-      req.status === "approved"
+    
+    // Check if there's an approved request for this email
+    return leads.some((lead: any) => 
+      lead.name === "🔐 PASSWORD REQUEST" && 
+      lead.email === currentAdmin.email &&
+      lead.message?.includes(`User: ${userEmail}`) &&
+      lead.status === "approved"
     );
   };
 
-  // 🚀 NEW: Check if sub-admin has a pending request for a user
+  // 🚀 Check if sub-admin has a pending request
   const hasPendingRequest = (userEmail: string) => {
     if (!currentAdmin) return false;
-    return passwordRequests.some(req => 
-      req.requestedBy === currentAdmin.email && 
-      req.requestedUserEmail === userEmail && 
-      req.status === "pending"
+    
+    return leads.some((lead: any) => 
+      lead.name === "🔐 PASSWORD REQUEST" && 
+      lead.email === currentAdmin.email &&
+      lead.message?.includes(`User: ${userEmail}`) &&
+      (!lead.status || lead.status === "pending")
     );
   };
 
@@ -246,12 +226,18 @@ export default function AdminDashboard() {
     } catch (err) { console.error("Failed to update sequence", err); }
   };
 
+  // 🚀 Filter password requests from inquiries
+  const passwordRequestLeads = leads
+    .filter(lead => lead.name === "🔐 PASSWORD REQUEST")
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+  // Regular inquiries (without password requests)
+  const regularInquiries = leads
+    .filter(lead => lead.type === "contact" && lead.name !== "🔐 PASSWORD REQUEST")
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
   const bookings = leads
     .filter(lead => lead.type === "booking")
-    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  
-  const inquiries = leads
-    .filter(lead => lead.type === "contact")
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   
   const adminList = users.filter(u => u.role === 'admin' || u.role === 'pending_admin' || u.role === 'pending' || u.email === "up@1123.com").sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
@@ -259,7 +245,7 @@ export default function AdminDashboard() {
 
   const isMainAdmin = currentAdmin?.email === "up@1123.com";
 
-  // 🚀 Filter tabs based on admin role
+  // 🚀 Tabs - Pwd Requests tab only for main admin
   const tabs = [
     { id: 'packages', label: '🌍 Packages' },
     { id: 'bookings', label: '🚀 Bookings' },
@@ -267,14 +253,8 @@ export default function AdminDashboard() {
     { id: 'admins', label: '🛡️ Admins' },
     { id: 'users', label: '👥 Users' },
     { id: 'feedbacks', label: '⭐ Feedbacks' },
-    // 🚀 Password Requests tab - ONLY visible to main admin
     ...(isMainAdmin ? [{ id: 'passwordRequests', label: '🔑 Pwd Requests' }] : [])
   ];
-
-  // 🚀 Sort password requests newest first
-  const sortedPasswordRequests = [...passwordRequests].sort((a, b) => 
-    new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-  );
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans relative overflow-x-hidden">
@@ -358,7 +338,7 @@ export default function AdminDashboard() {
                   <tr><th className="px-4 md:px-6 py-4 md:py-5">Date</th><th className="px-4 md:px-6 py-4 md:py-5">Name</th><th className="px-4 md:px-6 py-4 md:py-5">Message</th><th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {inquiries.length === 0 ? <tr><td colSpan={4} className="p-8 text-center text-slate-900 font-black uppercase italic">No inquiries yet.</td></tr> : inquiries.map((iq: any) => (
+                  {regularInquiries.length === 0 ? <tr><td colSpan={4} className="p-8 text-center text-slate-900 font-black uppercase italic">No inquiries yet.</td></tr> : regularInquiries.map((iq: any) => (
                     <tr key={iq._id || iq.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 md:px-6 py-4 text-[10px] md:text-xs text-slate-950 font-black">{new Date(iq.createdAt).toLocaleDateString()}</td>
                       <td className="px-4 md:px-6 py-4 font-black text-slate-950 text-sm uppercase italic">{iq.name}</td>
@@ -370,7 +350,7 @@ export default function AdminDashboard() {
               </>
             )}
 
-            {/* 🚀 NEW: PASSWORD REQUESTS TAB - Only visible to main admin */}
+            {/* 🚀 PASSWORD REQUESTS TAB - Only for main admin */}
             {activeTab === 'passwordRequests' && isMainAdmin && (
               <>
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
@@ -383,45 +363,69 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {sortedPasswordRequests.length === 0 ? (
+                  {passwordRequestLeads.length === 0 ? (
                     <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No password requests yet.</td></tr>
-                  ) : sortedPasswordRequests.map((req: any) => (
-                    <tr key={req.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 md:px-6 py-4 text-[10px] md:text-xs text-slate-900 font-black">
-                        {new Date(req.timestamp).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 md:px-6 py-4 font-black text-slate-950 text-sm uppercase italic">
-                        {req.requestedBy}
-                      </td>
-                      <td className="px-4 md:px-6 py-4 text-xs font-black text-blue-600">
-                        {req.requestedUserEmail}
-                      </td>
-                      <td className="px-4 md:px-6 py-4">
-                        {req.status === 'pending' ? (
-                          <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">⏳ PENDING</span>
-                        ) : req.status === 'approved' ? (
-                          <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">✅ APPROVED</span>
-                        ) : (
-                          <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">❌ REJECTED</span>
-                        )}
-                      </td>
-                      <td className="px-4 md:px-6 py-4 text-right space-x-2">
-                        {req.status === 'pending' && (
-                          <>
-                            <button onClick={() => handleApprovePasswordRequest(req.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-full transition-all border border-emerald-200">
-                              ✅ Approve
-                            </button>
-                            <button onClick={() => handleRejectPasswordRequest(req.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-3 py-2 rounded-full transition-all border border-red-200">
-                              ❌ Reject
-                            </button>
-                          </>
-                        )}
-                        <button onClick={() => handleDeletePasswordRequest(req.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 px-3 py-2 rounded-full transition-all">
-                          🗑️
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  ) : passwordRequestLeads.map((req: any) => {
+                    // Parse the message to extract info
+                    const userEmailMatch = req.message?.match(/User: (.*)/);
+                    const userEmail = userEmailMatch ? userEmailMatch[1] : "Unknown";
+                    
+                    return (
+                      <tr key={req._id || req.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 md:px-6 py-4 text-[10px] md:text-xs text-slate-900 font-black">
+                          {new Date(req.createdAt).toLocaleDateString()}
+                        </td>
+                        <td className="px-4 md:px-6 py-4 font-black text-slate-950 text-sm uppercase italic">
+                          {req.email}
+                        </td>
+                        <td className="px-4 md:px-6 py-4 text-xs font-black text-blue-600">
+                          {userEmail}
+                        </td>
+                        <td className="px-4 md:px-6 py-4">
+                          {req.status === 'approved' ? (
+                            <span className="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">✅ APPROVED</span>
+                          ) : req.status === 'rejected' ? (
+                            <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">❌ REJECTED</span>
+                          ) : (
+                            <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">⏳ PENDING</span>
+                          )}
+                        </td>
+                        <td className="px-4 md:px-6 py-4 text-right space-x-2">
+                          {req.status !== 'approved' && req.status !== 'rejected' && (
+                            <>
+                              <button onClick={async () => {
+                                try {
+                                  const res = await fetch(`https://travel-backend-api-vx7a.onrender.com/api/leads/${req._id}`, {
+                                    method: "PUT",
+                                    headers: { "Content-Type": "application/json", "role": "admin" },
+                                    body: JSON.stringify({ status: "approved" })
+                                  });
+                                  if (res.ok) { alert("Password Request Approved! ✅"); fetchAllData(); }
+                                } catch (err) { alert("Failed to approve!"); }
+                              }} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-full transition-all border border-emerald-200">
+                                ✅ Approve
+                              </button>
+                              <button onClick={async () => {
+                                try {
+                                  const res = await fetch(`https://travel-backend-api-vx7a.onrender.com/api/leads/${req._id}`, {
+                                    method: "PUT",
+                                    headers: { "Content-Type": "application/json", "role": "admin" },
+                                    body: JSON.stringify({ status: "rejected" })
+                                  });
+                                  if (res.ok) { alert("Password Request Rejected! ❌"); fetchAllData(); }
+                                } catch (err) { alert("Failed to reject!"); }
+                              }} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-3 py-2 rounded-full transition-all border border-red-200">
+                                ❌ Reject
+                              </button>
+                            </>
+                          )}
+                          <button onClick={() => handleDeleteLead(req._id || req.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 px-3 py-2 rounded-full transition-all">
+                            🗑️
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </>
             )}
@@ -450,7 +454,6 @@ export default function AdminDashboard() {
                         canDelete = isNormalUser; 
                     }
 
-                    // 🚀 Main admin can see all, sub-admin can see own + approved requests
                     const canViewPassword = iAmMain || isOwnProfile || canSubAdminViewPassword(u.email);
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
