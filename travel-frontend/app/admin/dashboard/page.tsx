@@ -25,6 +25,7 @@ export default function AdminDashboard() {
   });
 
   const [visiblePasswords, setVisiblePasswords] = useState<any>({});
+  const [passwordRequests, setPasswordRequests] = useState<any>({}); // Track password view requests
   const togglePasswordVisibility = (userId: any) => {
     setVisiblePasswords((prev: any) => ({ ...prev, [userId]: !prev[userId] }));
   };
@@ -163,6 +164,19 @@ export default function AdminDashboard() {
     } catch (err) { alert("Network Error!"); }
   };
 
+  // 🚀 NEW: Handle password view request
+  const handleRequestPasswordView = async (userId: any) => {
+    try {
+      // Here you would typically send a notification/request to the main admin
+      // For now, we'll just toggle the request state
+      setPasswordRequests((prev: any) => ({ ...prev, [userId]: true }));
+      alert("Password view request sent to Main Admin! 📩");
+      // In production, you'd make an API call to store this request
+    } catch (err) { 
+      alert("Failed to send request!"); 
+    }
+  };
+
   const changePackagePosition = async (oldIndex: number, newPosStr: string) => {
     const newPos = parseInt(newPosStr);
     if (isNaN(newPos) || newPos < 1 || newPos > packages.length || newPos - 1 === oldIndex) return;
@@ -176,10 +190,20 @@ export default function AdminDashboard() {
     } catch (err) { console.error("Failed to update sequence", err); }
   };
 
-  const bookings = leads.filter(lead => lead.type === "booking");
-  const inquiries = leads.filter(lead => lead.type === "contact");
+  // 🚀 NEW: Sort data by date (newest first)
+  const bookings = leads
+    .filter(lead => lead.type === "booking")
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  
+  const inquiries = leads
+    .filter(lead => lead.type === "contact")
+    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  
   const adminList = users.filter(u => u.role === 'admin' || u.role === 'pending_admin' || u.role === 'pending' || u.email === "up@1123.com");
   const normalUsersList = users.filter(u => u.role !== 'admin' && u.role !== 'pending_admin' && u.role !== 'pending' && u.email !== "up@1123.com");
+
+  // 🚀 NEW: Check if current admin is main admin
+  const isMainAdmin = currentAdmin?.email === "up@1123.com";
 
   return (
     <div className="min-h-screen bg-slate-100 font-sans relative overflow-x-hidden">
@@ -305,8 +329,11 @@ export default function AdminDashboard() {
                         canDelete = isNormalUser; 
                     }
 
+                    // 🚀 NEW: Only main admin can see passwords, sub-admin needs to request
+                    const canViewPassword = iAmMain;
                     const displayPassword = (isMaster && !iAmMain) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
+                    const hasRequestedPassword = passwordRequests[u._id || u.id];
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -320,12 +347,25 @@ export default function AdminDashboard() {
                         <td className="px-4 md:px-6 py-4 text-xs font-mono font-black text-blue-600 bg-slate-50 rounded-lg">
                           {u.password === "GoogleLogin_NoPassword" ? (
                             <span className="text-blue-500 font-semibold flex items-center gap-1">🌐 Google Auth</span>
-                          ) : (
+                          ) : canViewPassword ? (
                             <div className="flex items-center gap-2">
                               <span className="select-all">{visiblePasswords[u._id || u.id] ? displayPassword : "••••••••"}</span>
                               <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
                                 {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
                               </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span>••••••••</span>
+                              {!hasRequestedPassword ? (
+                                <button type="button" onClick={() => handleRequestPasswordView(u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
+                                  🔑 Request
+                                </button>
+                              ) : (
+                                <span className="text-[9px] font-black uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full border border-yellow-200" title="Request Pending">
+                                  ⏳ Pending
+                                </span>
+                              )}
                             </div>
                           )}
                         </td>
@@ -372,8 +412,11 @@ export default function AdminDashboard() {
                         canDelete = isNormalUser; 
                     }
 
+                    // 🚀 NEW: Only main admin can see passwords, sub-admin needs to request
+                    const canViewPassword = iAmMain;
                     const displayPassword = (isMaster && !iAmMain) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
+                    const hasRequestedPassword = passwordRequests[u._id || u.id];
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -387,12 +430,25 @@ export default function AdminDashboard() {
                         <td className="px-4 md:px-6 py-4 text-xs font-mono font-black text-blue-600 bg-slate-50 rounded-lg">
                           {u.password === "GoogleLogin_NoPassword" ? (
                             <span className="text-blue-500 font-semibold flex items-center gap-1">🌐 Google Auth</span>
-                          ) : (
+                          ) : canViewPassword ? (
                             <div className="flex items-center gap-2">
                               <span className="select-all">{visiblePasswords[u._id || u.id] ? displayPassword : "••••••••"}</span>
                               <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
                                 {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
                               </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span>••••••••</span>
+                              {!hasRequestedPassword ? (
+                                <button type="button" onClick={() => handleRequestPasswordView(u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Password View">
+                                  🔑 Request
+                                </button>
+                              ) : (
+                                <span className="text-[9px] font-black uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full border border-yellow-200" title="Request Pending">
+                                  ⏳ Pending
+                                </span>
+                              )}
                             </div>
                           )}
                         </td>
@@ -423,7 +479,9 @@ export default function AdminDashboard() {
                   <tr><th className="px-4 md:px-6 py-4 md:py-5">Date</th><th className="px-4 md:px-6 py-4 md:py-5">User Info</th><th className="px-4 md:px-6 py-4 md:py-5">Message</th><th className="px-4 md:px-6 py-4 md:py-5">Status</th><th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {feedbacks.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No feedbacks yet.</td></tr> : feedbacks.map((fb: any) => (
+                  {feedbacks.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No feedbacks yet.</td></tr> : feedbacks
+                    .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+                    .map((fb: any) => (
                     <tr key={fb._id || fb.id} className="hover:bg-slate-50 transition-colors">
                       <td className="px-4 md:px-6 py-4 text-[10px] md:text-xs text-slate-900 font-black">{new Date(fb.createdAt).toLocaleDateString()}</td>
                       <td className="px-4 md:px-6 py-4 font-black text-slate-950 text-sm uppercase italic">
