@@ -1,14 +1,15 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import React from 'react';
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("packages");
   const [packages, setPackages] = useState<any[]>([]);
   const [leads, setLeads] = useState<any[]>([]);
   const [users, setUsers] = useState<any[]>([]);
-  const [feedbacks, setFeedbacks] = useState<any[]>([]);
+  const [feedbacks, setFeedbacks] = useState<any[]>([]); 
   
   const [currentAdmin, setCurrentAdmin] = useState<any>(null);
 
@@ -26,8 +27,27 @@ export default function AdminDashboard() {
 
   const [visiblePasswords, setVisiblePasswords] = useState<any>({});
   const [passwordCountdowns, setPasswordCountdowns] = useState<any>({});
+  const intervalsRef = useRef<any>({});
 
-  const togglePasswordVisibility = (userId: any) => {
+  // 🚀 LATEST REQUEST HELPER (Exact Match Fixed)
+  const getLatestPasswordRequest = (userEmail: string) => {
+    if (!currentAdmin) return null;
+    const userRequests = leads.filter((lead: any) => 
+      lead.name === "🔐 PASSWORD REQUEST" && 
+      lead.email === currentAdmin.email &&
+      (lead.message || "").endsWith(`User: ${userEmail}`) // 👈 Exact match fixed
+    ).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return userRequests.length > 0 ? userRequests[0] : null;
+  };
+
+  const togglePasswordVisibility = (userId: any, userEmail: string) => {
+    if (currentAdmin?.email !== "up@1123.com") {
+      const req = getLatestPasswordRequest(userEmail);
+      if (!req || req.status !== "approved") {
+        alert("Access Denied! You must request access first.");
+        return;
+      }
+    }
     setVisiblePasswords((prev: any) => ({ ...prev, [userId]: !prev[userId] }));
   };
 
@@ -69,29 +89,32 @@ export default function AdminDashboard() {
     fetchAllData(); 
     const userStr = localStorage.getItem("user");
     if(userStr) setCurrentAdmin(JSON.parse(userStr));
+
+    // Cleanup timers on unmount
+    return () => {
+      Object.values(intervalsRef.current).forEach((t: any) => clearInterval(t));
+    };
   }, []);
 
-  // 🚀 LATEST REQUEST HELPER
-  const getLatestPasswordRequest = (userEmail: string) => {
-    if (!currentAdmin) return null;
-    const userRequests = leads.filter((lead: any) => 
-      lead.name === "🔐 PASSWORD REQUEST" && 
-      lead.email === currentAdmin.email &&
-      lead.message?.includes(`User: ${userEmail}`)
-    ).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    return userRequests.length > 0 ? userRequests[0] : null;
-  };
+  // 🚀 START 30 SECONDS TIMER
+  const startPasswordTimer = (userEmail: string, leadId: string, userId: string) => {
+    if (intervalsRef.current[userEmail]) return; // Already running
 
-  // 🚀 START 30 SECONDS TIMER FOR SUB-ADMIN
-  const startPasswordTimer = (userEmail: string, leadId: string) => {
     setPasswordCountdowns((prev: any) => ({ ...prev, [userEmail]: 30 }));
 
-    const timer = setInterval(() => {
+    intervalsRef.current[userEmail] = setInterval(() => {
       setPasswordCountdowns((prev: any) => {
         const current = prev[userEmail];
         if (current <= 1) {
-          clearInterval(timer);
-          setVisiblePasswords({}); // Hide the password instantly
+          clearInterval(intervalsRef.current[userEmail]);
+          delete intervalsRef.current[userEmail];
+          
+          // Hide password instantly
+          setVisiblePasswords((vp: any) => {
+            const nextVp = { ...vp };
+            delete nextVp[userId];
+            return nextVp;
+          });
           
           // Delete lead to reset state completely without page refresh
           fetch(`https://travel-backend-api-vx7a.onrender.com/api/leads/${leadId}`, {
@@ -114,7 +137,7 @@ export default function AdminDashboard() {
     users.forEach(u => {
       const req = getLatestPasswordRequest(u.email);
       if (req && req.status === "approved" && passwordCountdowns[u.email] === undefined) {
-        startPasswordTimer(u.email, req._id || req.id);
+        startPasswordTimer(u.email, req._id || req.id, u._id || u.id);
       }
     });
   }, [leads, currentAdmin, users]);
@@ -234,19 +257,15 @@ export default function AdminDashboard() {
     }
   };
 
-  const canSubAdminViewPassword = (userEmail: string) => {
-    const req = getLatestPasswordRequest(userEmail);
-    return req?.status === "approved";
-  };
-
-  const hasPendingRequest = (userEmail: string) => {
-    const req = getLatestPasswordRequest(userEmail);
-    return req && (!req.status || req.status === "pending");
-  };
-
-  const hasRejectedRequest = (userEmail: string) => {
-    const req = getLatestPasswordRequest(userEmail);
-    return req?.status === "rejected";
+  const handleRequestAgain = async (leadId: string) => {
+    try {
+      const res = await fetch(`https://travel-backend-api-vx7a.onrender.com/api/leads/${leadId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "role": "admin" },
+        body: JSON.stringify({ status: "pending" })
+      });
+      if (res.ok) { fetchAllData(); }
+    } catch (err) { alert("Network error!"); }
   };
 
   const changePackagePosition = async (oldIndex: number, newPosStr: string) => {
@@ -495,12 +514,15 @@ export default function AdminDashboard() {
                         canDelete = isNormalUser; 
                     }
 
-                    const canViewPassword = iAmMain || isOwnProfile || canSubAdminViewPassword(u.email);
+                    const req = getLatestPasswordRequest(u.email);
+                    const myPending = req && (!req.status || req.status === "pending");
+                    const myRejected = req && req.status === "rejected";
+                    const myApproved = req && req.status === "approved";
+                    const countdown = passwordCountdowns[u.email];
+
+                    const canViewPassword = iAmMain || isOwnProfile || myApproved;
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
-                    const myPendingRequest = !iAmMain && hasPendingRequest(u.email);
-                    const myRejectedRequest = !iAmMain && hasRejectedRequest(u.email);
-                    const countdown = passwordCountdowns[u.email];
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -514,13 +536,20 @@ export default function AdminDashboard() {
                         <td className="px-4 md:px-6 py-4 text-xs font-mono font-black text-blue-600 bg-slate-50 rounded-lg">
                           {u.password === "GoogleLogin_NoPassword" ? (
                             <span className="text-blue-500 font-semibold flex items-center gap-1">🌐 Google Auth</span>
-                          ) : canViewPassword ? (
+                          ) : iAmMain || isOwnProfile ? (
                             <div className="flex items-center gap-2">
                               <span className="select-all">{visiblePasswords[u._id || u.id] ? displayPassword : "••••••••"}</span>
-                              <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
+                              <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id, u.email)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
                                 {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
                               </button>
-                              {countdown > 0 && !iAmMain && (
+                            </div>
+                          ) : myApproved ? (
+                            <div className="flex items-center gap-2">
+                              <span className="select-all">{visiblePasswords[u._id || u.id] ? displayPassword : "••••••••"}</span>
+                              <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id, u.email)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
+                                {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
+                              </button>
+                              {countdown > 0 && (
                                 <span className="text-[10px] font-black text-orange-500 animate-pulse ml-1 bg-orange-50 px-1.5 py-0.5 rounded-full">
                                   ⏱️{countdown}s
                                 </span>
@@ -529,16 +558,16 @@ export default function AdminDashboard() {
                           ) : (
                             <div className="flex items-center gap-2">
                               <span>••••••••</span>
-                              {myPendingRequest ? (
+                              {myPending ? (
                                 <span className="text-[9px] font-black uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full border border-yellow-200">
                                   ⏳ Pending
                                 </span>
-                              ) : myRejectedRequest ? (
+                              ) : myRejected ? (
                                 <>
                                   <span className="text-[9px] font-black uppercase tracking-widest text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200">
                                     ❌ Rejected
                                   </span>
-                                  <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Again">
+                                  <button type="button" onClick={() => handleRequestAgain(req._id || req.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Again">
                                     🔄 Request Again
                                   </button>
                                 </>
@@ -594,12 +623,15 @@ export default function AdminDashboard() {
                         canDelete = isNormalUser; 
                     }
 
-                    const canViewPassword = iAmMain || isOwnProfile || canSubAdminViewPassword(u.email);
+                    const req = getLatestPasswordRequest(u.email);
+                    const myPending = req && (!req.status || req.status === "pending");
+                    const myRejected = req && req.status === "rejected";
+                    const myApproved = req && req.status === "approved";
+                    const countdown = passwordCountdowns[u.email];
+
+                    const canViewPassword = iAmMain || isOwnProfile || myApproved;
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
-                    const myPendingRequest = !iAmMain && hasPendingRequest(u.email);
-                    const myRejectedRequest = !iAmMain && hasRejectedRequest(u.email);
-                    const countdown = passwordCountdowns[u.email];
 
                     return (
                       <tr key={u._id || u.id} className="hover:bg-slate-50 transition-colors">
@@ -613,13 +645,20 @@ export default function AdminDashboard() {
                         <td className="px-4 md:px-6 py-4 text-xs font-mono font-black text-blue-600 bg-slate-50 rounded-lg">
                           {u.password === "GoogleLogin_NoPassword" ? (
                             <span className="text-blue-500 font-semibold flex items-center gap-1">🌐 Google Auth</span>
-                          ) : canViewPassword ? (
+                          ) : iAmMain || isOwnProfile ? (
                             <div className="flex items-center gap-2">
                               <span className="select-all">{visiblePasswords[u._id || u.id] ? displayPassword : "••••••••"}</span>
-                              <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
+                              <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id, u.email)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
                                 {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
                               </button>
-                              {countdown > 0 && !iAmMain && (
+                            </div>
+                          ) : myApproved ? (
+                            <div className="flex items-center gap-2">
+                              <span className="select-all">{visiblePasswords[u._id || u.id] ? displayPassword : "••••••••"}</span>
+                              <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id, u.email)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
+                                {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
+                              </button>
+                              {countdown > 0 && (
                                 <span className="text-[10px] font-black text-orange-500 animate-pulse ml-1 bg-orange-50 px-1.5 py-0.5 rounded-full">
                                   ⏱️{countdown}s
                                 </span>
@@ -628,16 +667,16 @@ export default function AdminDashboard() {
                           ) : (
                             <div className="flex items-center gap-2">
                               <span>••••••••</span>
-                              {myPendingRequest ? (
+                              {myPending ? (
                                 <span className="text-[9px] font-black uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full border border-yellow-200">
                                   ⏳ Pending
                                 </span>
-                              ) : myRejectedRequest ? (
+                              ) : myRejected ? (
                                 <>
                                   <span className="text-[9px] font-black uppercase tracking-widest text-red-600 bg-red-50 px-2 py-1 rounded-full border border-red-200">
                                     ❌ Rejected
                                   </span>
-                                  <button type="button" onClick={() => handleRequestPasswordView(u.email, u._id || u.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Again">
+                                  <button type="button" onClick={() => handleRequestAgain(req._id || req.id)} className="text-[9px] font-black uppercase tracking-widest text-orange-600 hover:bg-orange-50 px-2 py-1 rounded-full transition-all border border-orange-200" title="Request Again">
                                     🔄 Request Again
                                   </button>
                                 </>
