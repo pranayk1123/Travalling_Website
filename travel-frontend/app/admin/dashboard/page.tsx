@@ -24,6 +24,11 @@ export default function AdminDashboard() {
     email: "", newPassword: "", confirmPassword: ""
   });
 
+  const [visiblePasswords, setVisiblePasswords] = useState<any>({});
+  const togglePasswordVisibility = (userId: any) => {
+    setVisiblePasswords((prev: any) => ({ ...prev, [userId]: !prev[userId] }));
+  };
+
   const fetchAllData = async () => {
     try {
       const pkgRes = await fetch("https://travel-backend-api-vx7a.onrender.com/api/packages", { cache: "no-store" });
@@ -312,7 +317,18 @@ export default function AdminDashboard() {
                           )}
                         </td>
                         <td className="px-4 md:px-6 py-4 text-xs font-black text-slate-900">{u.email}</td>
-                        <td className="px-4 md:px-6 py-4 text-xs font-mono font-black text-blue-600 select-all bg-slate-50 rounded-lg">{displayPassword}</td>
+                        <td className="px-4 md:px-6 py-4 text-xs font-mono font-black text-blue-600 bg-slate-50 rounded-lg">
+                          {u.password === "GoogleLogin_NoPassword" ? (
+                            <span className="text-blue-500 font-semibold flex items-center gap-1">🌐 Google Auth</span>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="select-all">{visiblePasswords[u._id || u.id] ? displayPassword : "••••••••"}</span>
+                              <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
+                                {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
+                              </button>
+                            </div>
+                          )}
+                        </td>
                         <td className="px-4 md:px-6 py-4">
                            <span className={`px-2 py-1 md:px-3 md:py-1 rounded-full text-[8px] md:text-[9px] font-black uppercase tracking-widest ${isMaster ? 'bg-purple-100 text-purple-800' : isSubAdmin ? 'bg-yellow-100 text-yellow-800' : isPendingAdmin ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}`}>
                              {isMaster ? 'MAIN ADMIN' : isSubAdmin ? 'SUB ADMIN' : isPendingAdmin ? 'REQUESTED' : 'USER'}
@@ -368,7 +384,18 @@ export default function AdminDashboard() {
                           )}
                         </td>
                         <td className="px-4 md:px-6 py-4 text-xs font-black text-slate-900">{u.email}</td>
-                        <td className="px-4 md:px-6 py-4 text-xs font-mono font-black text-blue-600 select-all bg-slate-50 rounded-lg">{displayPassword}</td>
+                        <td className="px-4 md:px-6 py-4 text-xs font-mono font-black text-blue-600 bg-slate-50 rounded-lg">
+                          {u.password === "GoogleLogin_NoPassword" ? (
+                            <span className="text-blue-500 font-semibold flex items-center gap-1">🌐 Google Auth</span>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span className="select-all">{visiblePasswords[u._id || u.id] ? displayPassword : "••••••••"}</span>
+                              <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
+                                {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
+                              </button>
+                            </div>
+                          )}
+                        </td>
                         <td className="px-4 md:px-6 py-4">
                            <span className={`px-2 py-1 md:px-3 md:py-1 rounded-full text-[8px] md:text-[9px] font-black uppercase tracking-widest ${isMaster ? 'bg-purple-100 text-purple-800' : isSubAdmin ? 'bg-yellow-100 text-yellow-800' : isPendingAdmin ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}`}>
                              {isMaster ? 'MAIN ADMIN' : isSubAdmin ? 'SUB ADMIN' : isPendingAdmin ? 'REQUESTED' : 'USER'}
