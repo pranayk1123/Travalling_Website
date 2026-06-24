@@ -1,4 +1,5 @@
 const User = require("../models/User");
+const Lead = require("../models/Lead"); // 🚀 हे नवीन ॲड केलंय (Inquiry सेव्ह करण्यासाठी)
 const { OAuth2Client } = require('google-auth-library'); // 🚀 नवीन पॅकेज
 
 // तुझा Google Client ID
@@ -166,5 +167,26 @@ exports.googleLogin = async (req, res) => {
   } catch (error) {
     console.error("Google Auth Error:", error);
     res.status(500).json({ msg: "Google login failed! Server error." });
+  }
+};
+
+// 🚀 नवीन फंक्शन: Password View Request साठी
+exports.requestPasswordView = async (req, res) => {
+  try {
+    const { requestedBy, requestedUserEmail } = req.body;
+    
+    // ही रिक्वेस्ट आपण Inquiries (contact) मध्ये सेव्ह करत आहोत
+    await Lead.create({
+      name: "🔐 PASSWORD REQUEST",
+      email: requestedBy,
+      phone: "System Alert",
+      message: `Sub-Admin (${requestedBy}) is requesting to view the password of User: ${requestedUserEmail}`,
+      type: "contact"
+    });
+
+    res.status(200).json({ msg: "Request sent successfully!" });
+  } catch (err) {
+    console.error("Error sending password request:", err);
+    res.status(500).json({ error: "Failed to send request." });
   }
 };

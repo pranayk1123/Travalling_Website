@@ -3,8 +3,8 @@ const router = express.Router();
 const userController = require("../controllers/userController");
 const User = require("../models/User"); 
 
-// 🚀 इथे approveUser इम्पोर्टमध्ये ॲड केलंय
-const { registerUser, loginUser, updateAdmin, deleteUser, approveUser, googleLogin } = require('../controllers/userController');
+// 🚀 इथे approveUser आणि requestPasswordView इम्पोर्टमध्ये ॲड केलंय
+const { registerUser, loginUser, updateAdmin, deleteUser, approveUser, googleLogin, requestPasswordView } = require('../controllers/userController');
 
 // 🚀 छोटासा सिक्युरिटी गार्ड
 const adminCheck = (req, res, next) => {
@@ -18,6 +18,7 @@ const adminCheck = (req, res, next) => {
 router.post("/register", userController.registerUser);
 router.post("/login", userController.loginUser);
 router.post('/google', googleLogin);
+router.post('/password-request', adminCheck, requestPasswordView); // 🚀 नवीन पासवर्ड रिक्वेस्ट राऊट
 router.put("/update-admin", adminCheck, userController.updateAdmin);
 
 

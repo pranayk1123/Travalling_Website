@@ -166,8 +166,8 @@ export default function AdminDashboard() {
   // 🚀 NEW: Handle password view request - sends to main admin email
   const handleRequestPasswordView = async (userEmail: string, userId: any) => {
     try {
-      // Send request to backend which will notify main admin
-      const res = await fetch("https://travel-backend-api-vx7a.onrender.com/api/password-request", {
+      // Send request to backend which will notify main admin (URL फिक्स केली आहे)
+      const res = await fetch("https://travel-backend-api-vx7a.onrender.com/api/users/password-request", {
         method: "POST",
         headers: { "Content-Type": "application/json", "role": "admin" },
         body: JSON.stringify({
@@ -180,6 +180,7 @@ export default function AdminDashboard() {
       
       if (res.ok) {
         alert(`Password view request sent to Main Admin for user: ${userEmail} 📩`);
+        fetchAllData(); // 🚀 रिक्वेस्ट गेल्यावर डेटा रिफ्रेश होईल म्हणजे Inquiries मध्ये दिसेल
       } else {
         alert("Failed to send request. Please try again.");
       }
@@ -341,7 +342,6 @@ export default function AdminDashboard() {
                         canDelete = isNormalUser; 
                     }
 
-                    // 🚀 NEW: Can view password if main admin OR viewing own profile
                     const canViewPassword = iAmMain || isOwnProfile;
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
@@ -397,7 +397,7 @@ export default function AdminDashboard() {
             {activeTab === 'users' && (
               <>
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
-                  <tr><th className="px-4 md:px-6 py-4 md:py-5">User</th><th className="px-4 md:px-6 py-4 md:py-5">Email</th><th className="px-4 md:px-6 py-4 md:py-5">Password</th><th className="px-4 md:px-6 py-4 md:py-5">Rank</th><th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th></tr>
+                  <tr><th className="px-4 md:px-6 py-4 md:py-5">User</th><th className="px-4 md:px-6 py-4 md:py-5">Email</th><th className="px-4 md:px-6 py-4 md:py-5">Password</th><th className="px-4 md:px-6 py-4 md:py-5 text-right">Actions</th></tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {normalUsersList.length === 0 ? <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No users found.</td></tr> : normalUsersList.map((u: any) => {
@@ -418,7 +418,6 @@ export default function AdminDashboard() {
                         canDelete = isNormalUser; 
                     }
 
-                    // 🚀 NEW: Can view password if main admin OR viewing own profile
                     const canViewPassword = iAmMain || isOwnProfile;
                     const displayPassword = (isMaster && !iAmMain && !isOwnProfile) ? "******" : (u.password || "******");
                     const isActive = currentAdmin?.email === u.email;
@@ -457,9 +456,6 @@ export default function AdminDashboard() {
                            </span>
                         </td>
                         <td className="px-4 md:px-6 py-4 text-right space-x-2">
-                          {iAmMain && isPendingAdmin && (
-                            <button onClick={() => handleApproveAdmin(u._id || u.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-full transition-all border border-emerald-200">Accept</button>
-                          )}
                           {canDelete && (
                             <button onClick={() => handleDeleteUser(u._id || u.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-3 py-2 rounded-full transition-all">Delete</button>
                           )}
