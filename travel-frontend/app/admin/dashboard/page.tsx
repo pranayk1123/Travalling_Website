@@ -210,8 +210,8 @@ export default function AdminDashboard() {
     .filter(lead => lead.type === "contact")
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   
-  const adminList = users.filter(u => u.role === 'admin' || u.role === 'pending_admin' || u.role === 'pending' || u.email === "up@1123.com");
-  const normalUsersList = users.filter(u => u.role !== 'admin' && u.role !== 'pending_admin' && u.role !== 'pending' && u.email !== "up@1123.com");
+  const adminList = users.filter(u => u.role === 'admin' || u.role === 'pending_admin' || u.role === 'pending' || u.email === "up@1123.com").sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+  const normalUsersList = users.filter(u => u.role !== 'admin' && u.role !== 'pending_admin' && u.role !== 'pending' && u.email !== "up@1123.com").sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
 
   // 🚀 NEW: Check if current admin is main admin
   const isMainAdmin = currentAdmin?.email === "up@1123.com";
