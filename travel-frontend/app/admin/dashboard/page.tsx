@@ -162,39 +162,32 @@ export default function AdminDashboard() {
     } catch (err) { alert("Network Error!"); }
   };
 
-  // 🚀 Sub-admin requests password view → POST /api/password-request
-  // AdminDashboard.tsx में handleRequestPasswordView function में:
-
-const handleRequestPasswordView = async (userEmail: string, userId: any) => {
-  try {
-    const res = await fetch("https://travel-backend-api-vx7a.onrender.com/api/users/password-request", {  // 👈 /users/password-request
-      method: "POST",
-      headers: { "Content-Type": "application/json", "role": "admin" },
-      body: JSON.stringify({
-        requestedBy: currentAdmin?.email,
-        requestedUserEmail: userEmail,
-        requestedUserId: userId
-      })
-    });
-    
-    if (res.ok) {
-      alert(`Password view request sent to Main Admin for: ${userEmail} 📩`);
-      fetchAllData();
-    } else {
-      const errData = await res.json();
-      alert(errData.error || "Failed to send request. Please try again.");
+  const handleRequestPasswordView = async (userEmail: string, userId: any) => {
+    try {
+      const res = await fetch("https://travel-backend-api-vx7a.onrender.com/api/users/password-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "role": "admin" },
+        body: JSON.stringify({
+          requestedBy: currentAdmin?.email,
+          requestedUserEmail: userEmail,
+          requestedUserId: userId
+        })
+      });
+      
+      if (res.ok) {
+        alert(`Password view request sent to Main Admin for: ${userEmail} 📩`);
+        fetchAllData();
+      } else {
+        const errData = await res.json();
+        alert(errData.error || "Failed to send request. Please try again.");
+      }
+    } catch (err) { 
+      alert("Network error! Request failed.");
     }
-  } catch (err) { 
-    alert("Network error! Request failed.");
-  }
-};
+  };
 
-  // 🚀 Check if sub-admin has permission to view a specific user's password
-  // Password requests are stored as leads with name "🔐 PASSWORD REQUEST" and status field
   const canSubAdminViewPassword = (userEmail: string) => {
     if (!currentAdmin) return false;
-    
-    // Check if there's an approved request for this email
     return leads.some((lead: any) => 
       lead.name === "🔐 PASSWORD REQUEST" && 
       lead.email === currentAdmin.email &&
@@ -203,10 +196,8 @@ const handleRequestPasswordView = async (userEmail: string, userId: any) => {
     );
   };
 
-  // 🚀 Check if sub-admin has a pending request
   const hasPendingRequest = (userEmail: string) => {
     if (!currentAdmin) return false;
-    
     return leads.some((lead: any) => 
       lead.name === "🔐 PASSWORD REQUEST" && 
       lead.email === currentAdmin.email &&
@@ -228,12 +219,47 @@ const handleRequestPasswordView = async (userEmail: string, userId: any) => {
     } catch (err) { console.error("Failed to update sequence", err); }
   };
 
-  // 🚀 Filter password requests from inquiries
+  // 🚀 निष्पादन करण्यासाठी: Approve/Reject password request
+  const handleApprovePasswordRequest = async (leadId: string) => {
+    try {
+      const res = await fetch(`https://travel-backend-api-vx7a.onrender.com/api/leads/${leadId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "role": "admin" },
+        body: JSON.stringify({ status: "approved" })
+      });
+      if (res.ok) { 
+        alert("Password Request Approved! ✅"); 
+        fetchAllData(); 
+      } else {
+        alert("Failed to approve!");
+      }
+    } catch (err) { 
+      alert("Network error! " + err); 
+    }
+  };
+
+  const handleRejectPasswordRequest = async (leadId: string) => {
+    try {
+      const res = await fetch(`https://travel-backend-api-vx7a.onrender.com/api/leads/${leadId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "role": "admin" },
+        body: JSON.stringify({ status: "rejected" })
+      });
+      if (res.ok) { 
+        alert("Password Request Rejected! ❌"); 
+        fetchAllData(); 
+      } else {
+        alert("Failed to reject!");
+      }
+    } catch (err) { 
+      alert("Network error! " + err); 
+    }
+  };
+
   const passwordRequestLeads = leads
     .filter(lead => lead.name === "🔐 PASSWORD REQUEST")
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  // Regular inquiries (without password requests)
   const regularInquiries = leads
     .filter(lead => lead.type === "contact" && lead.name !== "🔐 PASSWORD REQUEST")
     .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
@@ -247,7 +273,6 @@ const handleRequestPasswordView = async (userEmail: string, userId: any) => {
 
   const isMainAdmin = currentAdmin?.email === "up@1123.com";
 
-  // 🚀 Tabs - Pwd Requests tab only for main admin
   const tabs = [
     { id: 'packages', label: '🌍 Packages' },
     { id: 'bookings', label: '🚀 Bookings' },
@@ -368,12 +393,12 @@ const handleRequestPasswordView = async (userEmail: string, userId: any) => {
                   {passwordRequestLeads.length === 0 ? (
                     <tr><td colSpan={5} className="p-8 text-center text-slate-900 font-black uppercase italic">No password requests yet.</td></tr>
                   ) : passwordRequestLeads.map((req: any) => {
-                    // Parse the message to extract info
                     const userEmailMatch = req.message?.match(/User: (.*)/);
                     const userEmail = userEmailMatch ? userEmailMatch[1] : "Unknown";
+                    const leadId = req._id || req.id;
                     
                     return (
-                      <tr key={req._id || req.id} className="hover:bg-slate-50 transition-colors">
+                      <tr key={leadId} className="hover:bg-slate-50 transition-colors">
                         <td className="px-4 md:px-6 py-4 text-[10px] md:text-xs text-slate-900 font-black">
                           {new Date(req.createdAt).toLocaleDateString()}
                         </td>
@@ -395,33 +420,15 @@ const handleRequestPasswordView = async (userEmail: string, userId: any) => {
                         <td className="px-4 md:px-6 py-4 text-right space-x-2">
                           {req.status !== 'approved' && req.status !== 'rejected' && (
                             <>
-                              <button onClick={async () => {
-                                try {
-                                  const res = await fetch(`https://travel-backend-api-vx7a.onrender.com/api/leads/${req._id}`, {
-                                    method: "PUT",
-                                    headers: { "Content-Type": "application/json", "role": "admin" },
-                                    body: JSON.stringify({ status: "approved" })
-                                  });
-                                  if (res.ok) { alert("Password Request Approved! ✅"); fetchAllData(); }
-                                } catch (err) { alert("Failed to approve!"); }
-                              }} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-full transition-all border border-emerald-200">
+                              <button onClick={() => handleApprovePasswordRequest(leadId)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-emerald-600 hover:bg-emerald-50 px-3 py-2 rounded-full transition-all border border-emerald-200">
                                 ✅ Approve
                               </button>
-                              <button onClick={async () => {
-                                try {
-                                  const res = await fetch(`https://travel-backend-api-vx7a.onrender.com/api/leads/${req._id}`, {
-                                    method: "PUT",
-                                    headers: { "Content-Type": "application/json", "role": "admin" },
-                                    body: JSON.stringify({ status: "rejected" })
-                                  });
-                                  if (res.ok) { alert("Password Request Rejected! ❌"); fetchAllData(); }
-                                } catch (err) { alert("Failed to reject!"); }
-                              }} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-3 py-2 rounded-full transition-all border border-red-200">
+                              <button onClick={() => handleRejectPasswordRequest(leadId)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-50 px-3 py-2 rounded-full transition-all border border-red-200">
                                 ❌ Reject
                               </button>
                             </>
                           )}
-                          <button onClick={() => handleDeleteLead(req._id || req.id)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 px-3 py-2 rounded-full transition-all">
+                          <button onClick={() => handleDeleteLead(leadId)} className="text-[9px] md:text-[10px] font-black uppercase tracking-widest text-slate-500 hover:bg-slate-100 px-3 py-2 rounded-full transition-all">
                             🗑️
                           </button>
                         </td>
@@ -475,7 +482,7 @@ const handleRequestPasswordView = async (userEmail: string, userId: any) => {
                             <span className="text-blue-500 font-semibold flex items-center gap-1">🌐 Google Auth</span>
                           ) : canViewPassword ? (
                             <div className="flex items-center gap-2">
-                              <span className="select-all">{visiblePasswords[u._id || u.id] ? displayPassword : "••••••••"}</span>
+                              <span className="select-all">{visiblePasswords[u._id || u.id] ? displayPassword : "••••���•••"}</span>
                               <button type="button" onClick={() => togglePasswordVisibility(u._id || u.id)} className="opacity-60 hover:opacity-100 transition-all text-sm hover:scale-110 active:scale-90" title={visiblePasswords[u._id || u.id] ? "Hide Password" : "Show Password"}>
                                 {visiblePasswords[u._id || u.id] ? "🙈" : "👁️"}
                               </button>
