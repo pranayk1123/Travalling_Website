@@ -32,11 +32,76 @@ export default function AdminDashboard() {
     setVisiblePasswords((prev: any) => ({ ...prev, [userId]: !prev[userId] }));
   };
 
-  // 🚀 Clear all timers and countdowns
   const clearAllTimers = () => {
     Object.values(passwordTimers).forEach((timer: any) => clearInterval(timer));
     setPasswordTimers({});
     setPasswordCountdowns({});
+  };
+
+  // 🚀 Load saved timers from localStorage for the current admin
+  const loadTimersForAdmin = (adminEmail: string) => {
+    if (!adminEmail) return;
+    
+    const savedTimers = localStorage.getItem(`passwordTimers_${adminEmail}`);
+    if (savedTimers) {
+      const parsed = JSON.parse(savedTimers);
+      const now = Date.now();
+      const activeTimers: any = {};
+      const activeCountdowns: any = {};
+      
+      Object.keys(parsed).forEach(userEmail => {
+        const elapsed = Math.floor((now - parsed[userEmail]) / 1000);
+        const remaining = 30 - elapsed;
+        if (remaining > 0) {
+          activeCountdowns[userEmail] = remaining;
+          
+          const timer = setInterval(() => {
+            setPasswordCountdowns((prev: any) => {
+              const current = prev[userEmail] || 0;
+              if (current <= 1) {
+                clearInterval(timer);
+                const newCountdowns = { ...prev };
+                delete newCountdowns[userEmail];
+                
+                // Remove from localStorage
+                const saved = JSON.parse(localStorage.getItem(`passwordTimers_${adminEmail}`) || "{}");
+                delete saved[userEmail];
+                if (Object.keys(saved).length === 0) {
+                  localStorage.removeItem(`passwordTimers_${adminEmail}`);
+                } else {
+                  localStorage.setItem(`passwordTimers_${adminEmail}`, JSON.stringify(saved));
+                }
+                
+                setPasswordTimers((prevTimers: any) => {
+                  const newTimers = { ...prevTimers };
+                  delete newTimers[userEmail];
+                  return newTimers;
+                });
+                
+                alert(`⏰ Password access for ${userEmail} has expired! Request again if needed.`);
+                return newCountdowns;
+              }
+              return { ...prev, [userEmail]: current - 1 };
+            });
+          }, 1000);
+          
+          activeTimers[userEmail] = timer;
+        } else {
+          // Timer expired, remove from localStorage
+          delete parsed[userEmail];
+        }
+      });
+      
+      // Update localStorage if any timers expired
+      if (Object.keys(parsed).length === 0) {
+        localStorage.removeItem(`passwordTimers_${adminEmail}`);
+      } else {
+        localStorage.setItem(`passwordTimers_${adminEmail}`, JSON.stringify(parsed));
+      }
+      
+      setPasswordTimers((prev: any) => ({ ...prev, ...activeTimers }));
+      setPasswordCountdowns((prev: any) => ({ ...prev, ...activeCountdowns }));
+    }
   };
 
   const fetchAllData = async () => {
@@ -68,44 +133,6 @@ export default function AdminDashboard() {
          const fbData = await fbRes.json();
          if (Array.isArray(fbData)) setFeedbacks(fbData);
       }
-
-      // 🚀 Load saved timers from localStorage
-      const savedTimers = localStorage.getItem(`passwordTimers_${currentAdmin?.email}`);
-      if (savedTimers && currentAdmin) {
-        const parsed = JSON.parse(savedTimers);
-        const now = Date.now();
-        const activeTimers: any = {};
-        const activeCountdowns: any = {};
-        
-        Object.keys(parsed).forEach(userEmail => {
-          const elapsed = Math.floor((now - parsed[userEmail]) / 1000);
-          const remaining = 30 - elapsed;
-          if (remaining > 0) {
-            activeCountdowns[userEmail] = remaining;
-            // Start timer for remaining time
-            const timer = setInterval(() => {
-              setPasswordCountdowns((prev: any) => {
-                const current = prev[userEmail] || 0;
-                if (current <= 1) {
-                  clearInterval(timer);
-                  const newCountdowns = { ...prev };
-                  delete newCountdowns[userEmail];
-                  // Remove from localStorage
-                  const savedTimers = JSON.parse(localStorage.getItem(`passwordTimers_${currentAdmin?.email}`) || "{}");
-                  delete savedTimers[userEmail];
-                  localStorage.setItem(`passwordTimers_${currentAdmin?.email}`, JSON.stringify(savedTimers));
-                  return newCountdowns;
-                }
-                return { ...prev, [userEmail]: current - 1 };
-              });
-            }, 1000);
-            activeTimers[userEmail] = timer;
-          }
-        });
-        
-        setPasswordTimers(activeTimers);
-        setPasswordCountdowns(activeCountdowns);
-      }
     } catch (err) {
       console.error("Failed to fetch data", err);
     }
@@ -114,7 +141,10 @@ export default function AdminDashboard() {
   useEffect(() => { 
     const userStr = localStorage.getItem("user");
     if(userStr) {
-      setCurrentAdmin(JSON.parse(userStr));
+      const user = JSON.parse(userStr);
+      setCurrentAdmin(user);
+      // 🚀 Load timers after setting current admin
+      loadTimersForAdmin(user.email);
     }
     fetchAllData();
     
@@ -123,15 +153,12 @@ export default function AdminDashboard() {
     };
   }, []);
 
-  // 🚀 When admin changes, reload everything
+  // 🚀 Reload timers when admin changes or page loads
   useEffect(() => {
-    if (currentAdmin) {
-      fetchAllData();
-    } else {
-      clearAllTimers();
-      setPasswordCountdowns({});
+    if (currentAdmin?.email) {
+      loadTimersForAdmin(currentAdmin.email);
     }
-  }, [currentAdmin?.email]);
+  }, [currentAdmin?.email, leads]); // Also reload when leads change
 
   const handleDelete = async (id: number) => {
     if (!confirm("Are you sure? This trip will be gone forever!")) return;
@@ -250,17 +277,16 @@ export default function AdminDashboard() {
     }
   };
 
-  // 🚀 Start 30 second countdown for password view
-  const startPasswordTimer = (userEmail: string) => {
+  const startPasswordTimer = (userEmail: string, adminEmail: string) => {
     // Clear existing timer if any
     if (passwordTimers[userEmail]) {
       clearInterval(passwordTimers[userEmail]);
     }
     
-    // Save timer start time to localStorage
-    const savedTimers = JSON.parse(localStorage.getItem(`passwordTimers_${currentAdmin?.email}`) || "{}");
+    // Save timer start time to localStorage for that admin
+    const savedTimers = JSON.parse(localStorage.getItem(`passwordTimers_${adminEmail}`) || "{}");
     savedTimers[userEmail] = Date.now();
-    localStorage.setItem(`passwordTimers_${currentAdmin?.email}`, JSON.stringify(savedTimers));
+    localStorage.setItem(`passwordTimers_${adminEmail}`, JSON.stringify(savedTimers));
     
     // Set initial countdown
     setPasswordCountdowns((prev: any) => ({ ...prev, [userEmail]: 30 }));
@@ -270,12 +296,15 @@ export default function AdminDashboard() {
       setPasswordCountdowns((prev: any) => {
         const current = prev[userEmail] || 0;
         if (current <= 1) {
-          // Timer finished
           clearInterval(timer);
           // Remove from localStorage
-          const savedTimers = JSON.parse(localStorage.getItem(`passwordTimers_${currentAdmin?.email}`) || "{}");
-          delete savedTimers[userEmail];
-          localStorage.setItem(`passwordTimers_${currentAdmin?.email}`, JSON.stringify(savedTimers));
+          const saved = JSON.parse(localStorage.getItem(`passwordTimers_${adminEmail}`) || "{}");
+          delete saved[userEmail];
+          if (Object.keys(saved).length === 0) {
+            localStorage.removeItem(`passwordTimers_${adminEmail}`);
+          } else {
+            localStorage.setItem(`passwordTimers_${adminEmail}`, JSON.stringify(saved));
+          }
           // Remove from timers
           setPasswordTimers((prevTimers: any) => {
             const newTimers = { ...prevTimers };
@@ -305,7 +334,6 @@ export default function AdminDashboard() {
       lead.status === "approved"
     );
     
-    // Check if countdown is active
     const countdown = passwordCountdowns[userEmail];
     return hasApprovedRequest && countdown > 0;
   };
@@ -352,17 +380,15 @@ export default function AdminDashboard() {
       });
       if (res.ok) { 
         alert(`Password Request Approved! ✅\n${requestedBy} can view ${userEmail}'s password for 30 seconds.`);
-        // 🚀 Start 30 second timer for this specific sub-admin
-        const timerKey = `${requestedBy}_${userEmail}`;
         
-        // Save to localStorage for the sub-admin
+        // Save timer for the sub-admin who requested
         const savedTimers = JSON.parse(localStorage.getItem(`passwordTimers_${requestedBy}`) || "{}");
         savedTimers[userEmail] = Date.now();
         localStorage.setItem(`passwordTimers_${requestedBy}`, JSON.stringify(savedTimers));
         
-        // If the approved sub-admin is currently logged in, start their timer
+        // If the approved sub-admin is currently logged in, start their timer immediately
         if (currentAdmin?.email === requestedBy) {
-          startPasswordTimer(userEmail);
+          startPasswordTimer(userEmail, requestedBy);
         }
         
         fetchAllData(); 
@@ -513,7 +539,7 @@ export default function AdminDashboard() {
               </>
             )}
 
-            {/* 🚀 PASSWORD REQUESTS TAB - Only for main admin */}
+            {/* 🚀 PASSWORD REQUESTS TAB */}
             {activeTab === 'passwordRequests' && isMainAdmin && (
               <>
                 <thead className="bg-slate-900 text-white uppercase text-[10px] tracking-[0.2em]">
