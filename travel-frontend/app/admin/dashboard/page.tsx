@@ -92,7 +92,10 @@ export default function AdminDashboard() {
 
     // Cleanup timers on unmount
     return () => {
-      Object.values(intervalsRef.current).forEach((t: any) => clearInterval(t));
+      Object.values(intervalsRef.current).forEach((t: any) => {
+        clearInterval(t);
+        clearTimeout(t);
+      });
     };
   }, []);
 
@@ -130,14 +133,28 @@ export default function AdminDashboard() {
     }, 1000);
   };
 
-  // 🚀 AUTO-TRIGGER TIMER WHEN APPROVED
+  // 🚀 AUTO-TRIGGER TIMER WHEN APPROVED OR REJECTED
   useEffect(() => {
     if (!currentAdmin || currentAdmin.email === "up@1123.com") return;
     
     users.forEach(u => {
       const req = getLatestPasswordRequest(u.email);
+      
+      // 1. If Approved: Start 30s timer
       if (req && req.status === "approved" && passwordCountdowns[u.email] === undefined) {
         startPasswordTimer(u.email, req._id || req.id, u._id || u.id);
+      }
+      
+      // 2. If Rejected: Auto-clear after 5 seconds to revert to normal 'Request' button
+      if (req && req.status === "rejected" && !intervalsRef.current[`rej_${u.email}`]) {
+        intervalsRef.current[`rej_${u.email}`] = setTimeout(() => {
+          fetch(`https://travel-backend-api-vx7a.onrender.com/api/leads/${req._id || req.id}`, {
+            method: "DELETE", headers: { "role": "admin" }
+          }).then(() => {
+            fetchAllData();
+            delete intervalsRef.current[`rej_${u.email}`];
+          });
+        }, 5000); // 5 seconds
       }
     });
   }, [leads, currentAdmin, users]);
