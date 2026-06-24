@@ -15,6 +15,13 @@ const Lead = sequelize.define("Lead", {
   type: {
     type: DataTypes.STRING,
     defaultValue: "contact" // जर काहीच नाही पाठवलं तर तो 'contact' म्हणून सेव्ह होईल
+  },
+  
+  // 🚀 नवीन: Password Request Status के लिए
+  status: {
+    type: DataTypes.STRING,
+    defaultValue: "pending",
+    allowNull: true
   }
 });
 
