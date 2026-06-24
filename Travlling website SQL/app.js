@@ -22,6 +22,11 @@ const corsOptions = {
   optionsSuccessStatus: 200
 };
 
+// To keep Render server awake (Cron-job health check)
+app.get("/", (req, res) => {
+  res.status(200).send("Travel Backend is Awake! 🚀");
+});
+
 app.use(cors(corsOptions));
 
 app.use(cors());
