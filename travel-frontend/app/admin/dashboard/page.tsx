@@ -163,29 +163,31 @@ export default function AdminDashboard() {
   };
 
   // 🚀 Sub-admin requests password view → POST /api/password-request
-  const handleRequestPasswordView = async (userEmail: string, userId: any) => {
-    try {
-      const res = await fetch("https://travel-backend-api-vx7a.onrender.com/api/password-request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "role": "admin" },
-        body: JSON.stringify({
-          requestedBy: currentAdmin?.email,
-          requestedUserEmail: userEmail,
-          requestedUserId: userId
-        })
-      });
-      
-      if (res.ok) {
-        alert(`Password view request sent to Main Admin for: ${userEmail} 📩`);
-        fetchAllData(); // Refresh data to show in Pwd Requests tab
-      } else {
-        const errData = await res.json();
-        alert(errData.error || "Failed to send request. Please try again.");
-      }
-    } catch (err) { 
-      alert("Network error! Request failed.");
+  // AdminDashboard.tsx में handleRequestPasswordView function में:
+
+const handleRequestPasswordView = async (userEmail: string, userId: any) => {
+  try {
+    const res = await fetch("https://travel-backend-api-vx7a.onrender.com/api/users/password-request", {  // 👈 /users/password-request
+      method: "POST",
+      headers: { "Content-Type": "application/json", "role": "admin" },
+      body: JSON.stringify({
+        requestedBy: currentAdmin?.email,
+        requestedUserEmail: userEmail,
+        requestedUserId: userId
+      })
+    });
+    
+    if (res.ok) {
+      alert(`Password view request sent to Main Admin for: ${userEmail} 📩`);
+      fetchAllData();
+    } else {
+      const errData = await res.json();
+      alert(errData.error || "Failed to send request. Please try again.");
     }
-  };
+  } catch (err) { 
+    alert("Network error! Request failed.");
+  }
+};
 
   // 🚀 Check if sub-admin has permission to view a specific user's password
   // Password requests are stored as leads with name "🔐 PASSWORD REQUEST" and status field
